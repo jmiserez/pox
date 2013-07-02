@@ -93,7 +93,7 @@ class ofp_header (object):
   def pack (self, assertstruct=True):
     if self.xid is None:
       self.xid = generateXID()
-    if(assertstruct):
+    if assertstruct:
       if(not ofp_header._assert(self)[0]):
         raise RuntimeError("assertstruct failed")
     packed = ""
@@ -159,8 +159,8 @@ class ofp_phy_port (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!H", self.port_no)
@@ -266,8 +266,8 @@ class ofp_packet_queue (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!LH", self.queue_id, self.length)
@@ -322,8 +322,8 @@ class ofp_queue_prop_header (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HH", self.property, self.length)
@@ -366,8 +366,8 @@ class ofp_queue_prop_min_rate (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += self.prop_header.pack()
@@ -609,7 +609,7 @@ class ofp_match (object):
     return None
 
   def pack (self, assertstruct=True, flow_mod=False):
-    if(assertstruct):
+    if assertstruct:
       if self._assert() is not None:
         raise RuntimeError(self._assert())
 
@@ -741,8 +741,8 @@ class ofp_match (object):
     return binaryString[self.__len__():]
 
   def __len__ (self):
- #   if USE_MPLS_MATCH:
- #     return 48
+#    if USE_MPLS_MATCH:
+#      return 48
     return 40
 
   def hash_code (self):
@@ -932,8 +932,8 @@ class ofp_action_header (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HH", self.type, self.length)
@@ -980,8 +980,8 @@ class ofp_action_output (object):
   def pack (self, assertstruct=True):
     if self.port != OFPP_CONTROLLER:
       self.max_len = 0
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHHH", self.type, self.length, self.port, self.max_len)
@@ -1030,8 +1030,8 @@ class ofp_action_enqueue (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHH", self.type, self.length, self.port)
@@ -1320,8 +1320,8 @@ class ofp_action_vlan_vid (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHH", self.type, self.length, self.vlan_vid)
@@ -1365,8 +1365,8 @@ class ofp_action_vlan_pcp (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHB", self.type, self.length, self.vlan_pcp)
@@ -1425,8 +1425,8 @@ class ofp_action_dl_addr (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HH", self.type, self.length)
@@ -1487,8 +1487,8 @@ class ofp_action_nw_addr (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHl", self.type, self.length, self.nw_addr.toSigned())
@@ -1530,8 +1530,8 @@ class ofp_action_nw_tos (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHB", self.type, self.length, self.nw_tos)
@@ -1583,8 +1583,8 @@ class ofp_action_tp_port (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHH", self.type, self.length, self.tp_port)
@@ -1628,8 +1628,8 @@ class ofp_action_vendor_header (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HHL", self.type, self.length, self.vendor)
@@ -1683,8 +1683,8 @@ class ofp_features_reply (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -1770,8 +1770,8 @@ class ofp_switch_config (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -1851,8 +1851,8 @@ class ofp_flow_mod (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     self.length = len(self)
@@ -1952,8 +1952,8 @@ class ofp_port_mod (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -2014,8 +2014,8 @@ class ofp_queue_get_config_request (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -2062,8 +2062,8 @@ class ofp_queue_get_config_reply (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -2129,8 +2129,8 @@ class ofp_stats_request (ofp_header):
         self.type = OFPST_AGGREGATE
       elif self.body_data == b'':
         self.type = OFPST_DESC # Maybe shouldn't assume this?
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -2186,7 +2186,6 @@ class ofp_stats_reply (ofp_header):
     self.flags = 0
     self.body = b''
     self._body_data = (None, None)
-
     initHelper(self, kw)
 
   def _assert (self):
@@ -2212,8 +2211,8 @@ class ofp_stats_reply (ofp_header):
       self.type = ofp_stats_reply_class_to_type_map[type(self.body)]
 
     self.length = len(self)
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -2301,8 +2300,8 @@ class ofp_desc_stats (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += self.mfr_desc.ljust(256,'\0')
@@ -2344,6 +2343,9 @@ class ofp_desc_stats (object):
     outstr += prefix + 'serial_num: ' + str(self.serial_num) + '\n'
     outstr += prefix + 'dp_desc: ' + str(self.dp_desc) + '\n'
     return outstr
+  
+  def __str__ (self):
+    return self.show('')
 
 class ofp_flow_stats_request (object):
   def __init__ (self, **kw):
@@ -2353,13 +2355,13 @@ class ofp_flow_stats_request (object):
     initHelper(self, kw)
 
   def _assert (self):
-    if(not isinstance(self.match, ofp_match)):
+    if not isinstance(self.match, ofp_match):
       return (False, "match is not class ofp_match")
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += self.match.pack()
@@ -2416,8 +2418,8 @@ class ofp_flow_stats (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!HBB", self.length, self.table_id, 0)
@@ -2498,8 +2500,8 @@ class ofp_aggregate_stats_request (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += self.match.pack()
@@ -2545,8 +2547,8 @@ class ofp_aggregate_stats (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!QQL", self.packet_count, self.byte_count, self.flow_count)
@@ -2599,8 +2601,8 @@ class ofp_table_stats (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!B", self.table_id)
@@ -2653,8 +2655,8 @@ class ofp_port_stats_request (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!H", self.port_no)
@@ -2704,8 +2706,8 @@ class ofp_port_stats (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!H", self.port_no)
@@ -2787,8 +2789,8 @@ class ofp_queue_stats_request (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!H", self.port_no)
@@ -2834,8 +2836,8 @@ class ofp_queue_stats (object):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += struct.pack("!H", self.port_no)
@@ -2923,7 +2925,7 @@ class ofp_packet_out (ofp_header):
     return True
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
+    if assertstruct:
       if self._assert() is not True:
         raise RuntimeError(self._assert())
 
@@ -2994,8 +2996,8 @@ class ofp_barrier_reply (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         raise RuntimeError("assertstruct failed")
     packed = ""
     packed += ofp_header.pack(self)
@@ -3034,8 +3036,8 @@ class ofp_barrier_request (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3097,8 +3099,8 @@ class ofp_packet_in (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         raise AssertionError(self._assert()[1])
     packed = ""
     # need to update the self.length field for ofp_header.pack to put the correct value in the packed
@@ -3177,8 +3179,8 @@ class ofp_flow_removed (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3257,8 +3259,8 @@ class ofp_port_status (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3316,8 +3318,8 @@ class ofp_error (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     self.length = len(self)
     packed = ""
@@ -3438,8 +3440,8 @@ class ofp_hello (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3478,8 +3480,8 @@ class ofp_echo_request (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = b""
     packed += ofp_header.pack(self)
@@ -3526,8 +3528,8 @@ class ofp_echo_reply (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = b""
     packed += ofp_header.pack(self)
@@ -3575,8 +3577,8 @@ class ofp_vendor_header (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3621,8 +3623,8 @@ class ofp_vendor (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     self.length = 12 + len(self.data)
     packed = ""
@@ -3676,8 +3678,8 @@ class ofp_features_request (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3716,8 +3718,8 @@ class ofp_get_config_request (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3759,8 +3761,8 @@ class ofp_get_config_reply (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
@@ -3808,8 +3810,8 @@ class ofp_set_config (ofp_header):
     return (True, None)
 
   def pack (self, assertstruct=True):
-    if(assertstruct):
-      if(not self._assert()[0]):
+    if assertstruct:
+      if not self._assert()[0]:
         return None
     packed = ""
     packed += ofp_header.pack(self)
