@@ -2373,7 +2373,7 @@ class ofp_flow_stats_request (object):
       return binaryString
     self.match.unpack(binaryString[0:])
     (self.table_id, pad, self.out_port) = struct.unpack_from("!BBH", binaryString, len(self.match))
-    return binaryString[len(self)]
+    return binaryString[len(self):]
 
   def __len__ (self):
     return 4 + len(self.match)

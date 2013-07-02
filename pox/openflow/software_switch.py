@@ -208,13 +208,13 @@ class SoftwareSwitch(EventMixin):
                             dp_desc="high performance emuswitch. Several packets per second have been observed (but not by reliable witnesses)")
 
     def flow_stats(ofp):
-      req = ofp_flow_stats_request().unpack(ofp.body)
-      assert(self.table_id == TABLE_ALL)
+      req = ofp_flow_stats_request()
+      assert(req.table_id == TABLE_ALL)
       return self.table.flow_stats(req.match, req.out_port)
 
     def aggregate_stats(ofp):
-      req = ofp_aggregate_stats_request().unpack(ofp.body)
-      assert(self.table_id == TABLE_ALL)
+      req = ofp_aggregate_stats_request()
+      assert(req.table_id == TABLE_ALL)
       return self.table.aggregate_stats(req.match, out_port)
 
     def table_stats(ofp):
@@ -247,7 +247,7 @@ class SoftwareSwitch(EventMixin):
     else:
       raise AttributeError("Unsupported stats request type %d" % ofp.type)
 
-    reply = ofp_stats_reply(xid=ofp.xid, body=handler(ofp))
+    reply = ofp_stats_reply(xid=ofp.xid, body=str(handler(ofp)))
     self.log.debug("Sending stats reply %s %s", self.name, str(reply))
     self.send(reply)
 
