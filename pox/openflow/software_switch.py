@@ -215,7 +215,7 @@ class SoftwareSwitch(EventMixin):
     def aggregate_stats(ofp):
       req = ofp_aggregate_stats_request()
       assert(req.table_id == TABLE_ALL)
-      return self.table.aggregate_stats(req.match, out_port)
+      return self.table.aggregate_stats(req.match, req.out_port)
 
     def table_stats(ofp):
       return self.table.table_stats()
