@@ -100,14 +100,11 @@ class NXSoftwareSwitch(SoftwareSwitch):
           self.log.info("Could not find any connection to send messages %s", str(message))
     return connections_used
 
-  def add_connection(self, connection):
+  def set_connection(self, connection):
     self.role_by_conn[connection.ID] = nx.ROLE_OTHER
     connection.set_message_handler(self.on_message_received)
     self.connections.append(connection)
     return connection
-
-  def set_connection(self, connection):
-    self.add_connection(connection)
 
   def set_role(self, connection, role):
     self.role_by_conn[connection.ID] = role
