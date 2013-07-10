@@ -209,11 +209,13 @@ class SoftwareSwitch(EventMixin):
 
     def flow_stats(ofp):
       req = ofp_flow_stats_request()
+      req.unpack(ofp.body)
       assert(req.table_id == TABLE_ALL)
       return self.table.flow_stats(req.match, req.out_port)
 
     def aggregate_stats(ofp):
       req = ofp_aggregate_stats_request()
+      req.unpack(ofp.body)
       assert(req.table_id == TABLE_ALL)
       return self.table.aggregate_stats(req.match, req.out_port)
 
@@ -221,7 +223,8 @@ class SoftwareSwitch(EventMixin):
       return self.table.table_stats()
 
     def port_stats(ofp):
-      req = ofp_port_stats_request().unpack(ofp.body)
+      req = ofp_port_stats_request()
+      req.unpack(ofp.body)
       if req.port_no == OFPP_NONE:
         res = ofp_port_stats(port_no=OFPP_NONE)
         for stats in self.port_stats.values():
@@ -247,7 +250,9 @@ class SoftwareSwitch(EventMixin):
     else:
       raise AttributeError("Unsupported stats request type %d" % ofp.type)
 
-    reply = ofp_stats_reply(xid=ofp.xid, body=str(handler(ofp)))
+    body=handler(ofp)
+    self.log.debug("Type: %s" % str(ofp.type))
+    reply = ofp_stats_reply(xid=ofp.xid, body=body)
     self.log.debug("Sending stats reply %s %s", self.name, str(reply))
     self.send(reply)
 

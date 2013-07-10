@@ -114,7 +114,7 @@ class TableEntry (object):
     return ofp_flow_stats (
         match = self.match,
         duration_sec = int(duration),
-        duration_nsec = int(duration * 1e9),
+        duration_nsec = int((duration - int(duration)) * 1e9),
         priority = self.priority,
         idle_timeout = self.idle_timeout,
         hard_timeout = self.hard_timeout,
@@ -189,6 +189,9 @@ class FlowTable (EventMixin):
 
   def flow_stats(self, match, out_port=None, now=None):
     return ( e.flow_stats() for e in self.matching_entries(match=match, strict=False, out_port=out_port))
+
+  def table_stats(self):
+    return ofp_table_stats()
 
   def expired_entries(self, now=None):
     return [ entry for entry in self.table if entry.is_expired(now) ]

@@ -2230,7 +2230,7 @@ class ofp_stats_reply (ofp_header):
 
   def __len__ (self):
     l = 12
-    l += len(self.body)
+    l += len(self.body_data)
     return l
 
   def __eq__ (self, other):
@@ -2249,7 +2249,7 @@ class ofp_stats_reply (ofp_header):
     outstr += ofp_header.show(self, prefix + '  ')
     outstr += prefix + 'type: ' + str(self.type) + '\n'
     outstr += prefix + 'flags: ' + str(self.flags) + '\n'
-    outstr += prefix + 'body:\n' + _format_body(self.body, prefix + '  ') + '\n'
+    outstr += prefix + 'body:\n' + _format_body(self.body_data, prefix + '  ') + '\n'
     return outstr
 
 ofp_stats_types_rev_map = {
@@ -2424,6 +2424,7 @@ class ofp_flow_stats (object):
     packed = ""
     packed += struct.pack("!HBB", self.length, self.table_id, 0)
     packed += self.match.pack()
+    print "Duration: %d nsec: %d" % (self.duration_sec, self.duration_nsec)
     packed += struct.pack("!LLHHH", self.duration_sec, self.duration_nsec, self.priority, self.idle_timeout, self.hard_timeout)
     packed += _PAD6 # Pad
     packed += struct.pack("!QQQ", self.cookie, self.packet_count, self.byte_count)
