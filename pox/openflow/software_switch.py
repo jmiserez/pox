@@ -206,7 +206,9 @@ class SoftwareSwitch(EventMixin):
 
   def _receive_get_config_request(self, ofp):
     self.log.debug("Get config request %s %s ", self.name, str(ofp))
-    msg = ofp_get_config_reply(xid = ofp.xid)
+    msg = ofp_get_config_reply(xid = ofp.xid,
+                               miss_send_len = self.capabilities.miss_send_len,
+                               flags = self.capabilities.flags)
     self.send(msg)
 
   def _receive_stats_request(self, ofp):
@@ -270,6 +272,8 @@ class SoftwareSwitch(EventMixin):
 
   def _receive_set_config(self, config):
     self.log.debug("Set config %s %s", self.name, str(config))
+    self.capabilities.miss_send_len = config.miss_send_len
+    self.capabilities.flags = config.flags
 
   def _receive_port_mod(self, port_mod):
     self.log.debug("Port Mod %s %s", self.name, str(port_mod))
@@ -685,12 +689,12 @@ class SwitchCapabilities:
     self.table_stats = False
     self.port_stats = False
     self.stp = False
-    self.multi_phy_tx = False
-    self.ip_resam = False
+    self.ip_reasm = False
+    self.queue_stats = False
+    self.arp_match_ip = False
     ##Switch config
-    self.send_exp = None
-    self.ip_frag = 0
     self.miss_send_len = miss_send_len
+    self.flags = 0
     ##Valid actions
     self.act_output = True
     self.act_set_vlan_vid = True
@@ -700,8 +704,10 @@ class SwitchCapabilities:
     self.act_set_dl_dst = True
     self.act_set_nw_src = True
     self.act_set_nw_dst = True
+    self.act_set_nw_tos = True
     self.act_set_tp_src = True
     self.act_set_tp_dst = True
+    self.act_enqueue = False
     self.act_vendor = False
 
   def get_capabilities(self):
@@ -716,10 +722,12 @@ class SwitchCapabilities:
       value += ofp_capabilities_rev_map['OFPC_PORT_STATS']
     if (self.stp):
       value += ofp_capabilities_rev_map['OFPC_STP']
-    if (self.multi_phy_tx):
-      value += ofp_capabilities_rev_map['OFPC_MULTI_PHY_TX']
-    if (self.ip_resam):
+    if (self.ip_reasm):
       value += ofp_capabilities_rev_map['OFPC_IP_REASM']
+    if (self.queue_stats):
+      value += ofp_capabilities_rev_map['OFPC_QUEUE_STATS']
+    if (self.arp_match_ip):
+      value += ofp_capabilities_rev_map['OFPC_ARP_MATCH_IP']
     return value
 
   def get_actions(self):
@@ -727,23 +735,28 @@ class SwitchCapabilities:
     """
     value = 0
     if (self.act_output):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_OUTPUT']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_OUTPUT'])
     if (self.act_set_vlan_vid):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_VLAN_VID']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_VLAN_VID'])
     if (self.act_set_vlan_pcp):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_VLAN_PCP']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_VLAN_PCP'])
     if (self.act_strip_vlan):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_STRIP_VLAN']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_STRIP_VLAN'])
     if (self.act_set_dl_src):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_DL_SRC']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_DL_SRC'])
     if (self.act_set_dl_dst):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_DL_DST']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_DL_DST'])
     if (self.act_set_nw_src):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_NW_SRC']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_NW_SRC'])
     if (self.act_set_nw_dst):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_NW_DST']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_NW_DST'])
+    if (self.act_set_nw_tos):
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_NW_TOS'])
     if (self.act_set_tp_src):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_TP_SRC']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_TP_SRC'])
     if (self.act_set_tp_dst):
-      value += (1 << (ofp_action_type_rev_map['OFPAT_SET_TP_DST']+1))
+      value += (1 << ofp_action_type_rev_map['OFPAT_SET_TP_DST'])
+    if (self.act_enqueue):
+      value += (1 << ofp_action_type_rev_map['OFPAT_ENQUEUE'])
     return value
+
