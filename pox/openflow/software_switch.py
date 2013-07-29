@@ -27,7 +27,9 @@ import itertools
 import logging
 
 class DpPacketOut (Event):
-  """ Event raised when a dataplane packet is sent out a port """
+  """ Event raised when a dataplane packet is sent out a port.
+  node may be a Host object or a SoftwareSwitch object.
+  """
   def __init__ (self, node, packet, port):
     assert_type("packet", packet, ethernet, none_ok=False)
     Event.__init__(self)
@@ -36,6 +38,16 @@ class DpPacketOut (Event):
     self.port = port
     # For backwards compatability:
     self.switch = node
+
+  def get_host_id(self):
+    if hasattr(self.node, "hid"):
+      return self.node.hid
+    return None
+
+  def get_switch_id(self):
+    if hasattr(self.node, "hid"):
+      return None
+    return self.node.dpid
 
 def _default_port_list(num_ports=4, prefix=0):
   return [ofp_phy_port(port_no=i, hw_addr=EthAddr("00:00:00:00:%2x:%2x" % (prefix % 255, i))) for i in range(1, num_ports+1)]
