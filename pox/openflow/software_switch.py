@@ -685,13 +685,13 @@ class SwitchCapabilities:
     Created by ykk
     """
     ##Capabilities support by datapath
-    self.flow_stats = False
-    self.table_stats = False
-    self.port_stats = False
-    self.stp = False
-    self.ip_reasm = False
-    self.queue_stats = False
-    self.arp_match_ip = False
+    self.flow_stats = True
+    self.table_stats = True
+    self.port_stats = True
+    self.stp = True
+    self.ip_reasm = True
+    self.queue_stats = True
+    self.arp_match_ip = True
     ##Switch config
     self.miss_send_len = miss_send_len
     self.flags = 0
