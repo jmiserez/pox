@@ -641,14 +641,15 @@ class OFConnection (object):
     # bytes
     msg_obj = OFConnection.ofp_msgs[ofp_type]()
     msg_obj.unpack(message)
-    return msg_obj
+    return (msg_obj, packet_length)
 
   def read (self, io_worker):
     while True:
       message = io_worker.peek_receive_buf()
       msg_obj = None
+      packet_length = 0
       try:
-        msg_obj = OFConnection.parse_of_packet()
+        (msg_obj, packet_length) = OFConnection.parse_of_packet(message)
       except ValueError as e:
         e = ValueError(e.__str__() + "on connection " + str(self))
         if self.error_handler:
