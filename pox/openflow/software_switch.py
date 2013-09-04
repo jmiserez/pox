@@ -626,7 +626,7 @@ class OFConnection (object):
   @staticmethod
   def parse_of_packet(message):
     if len(message) < 4:
-      return None
+      return (None, 0)
 
     if ord(message[0]) != OFP_VERSION:
       raise ValueError("Bad OpenFlow version (" + str(ord(message[0])) + ")")
@@ -635,7 +635,7 @@ class OFConnection (object):
     ofp_type = ord(message[1])
     packet_length = ord(message[2]) << 8 | ord(message[3])
     if packet_length > len(message):
-      return None
+      return (None, 0)
 
     # msg.unpack implicitly only examines its own bytes, and not trailing
     # bytes
