@@ -585,6 +585,8 @@ class OFConnection (object):
   # recoco Connection Listener loop)
   # Globally unique identifier for the Connection instance
   ID = 0
+  ## OpenFlow Message map
+  ofp_msgs = make_type_to_class_table()
 
   # These methods are called externally by IOWorker
   def msg (self, m):
@@ -602,8 +604,6 @@ class OFConnection (object):
     OFConnection.ID += 1
     self.ID = OFConnection.ID
     self.log = logging.getLogger("ControllerConnection(id=%d)" % self.ID)
-    ## OpenFlow Message map
-    self.ofp_msgs = make_type_to_class_table()
     self.on_message_received = None
 
   def set_message_handler(self, handler):
@@ -623,29 +623,41 @@ class OFConnection (object):
         data = data.pack()
     self.io_worker.send(data)
 
+  @staticmethod
+  def parse_of_packet(message):
+    if len(message) < 4:
+      return None
+
+    if ord(message[0]) != OFP_VERSION:
+      raise ValueError("Bad OpenFlow version (" + str(ord(message[0])) + ")")
+
+    # OpenFlow parsing occurs here:
+    ofp_type = ord(message[1])
+    packet_length = ord(message[2]) << 8 | ord(message[3])
+    if packet_length > len(message):
+      return None
+
+    # msg.unpack implicitly only examines its own bytes, and not trailing
+    # bytes
+    msg_obj = OFConnection.ofp_msgs[ofp_type]()
+    msg_obj.unpack(message)
+    return msg_obj
+
   def read (self, io_worker):
     while True:
       message = io_worker.peek_receive_buf()
-      if len(message) < 4:
-        break
-
-      if ord(message[0]) != OFP_VERSION:
-        e = ValueError("Bad OpenFlow version (" + str(ord(message[0])) + ") on connection " + str(self))
+      msg_obj = None
+      try:
+        msg_obj = OFConnection.parse_of_packet()
+      except ValueError as e:
+        e = ValueError(e.__str__() + "on connection " + str(self))
         if self.error_handler:
           return self.error_handler(e)
         else:
           raise e
 
-      # OpenFlow parsing occurs here:
-      ofp_type = ord(message[1])
-      packet_length = ord(message[2]) << 8 | ord(message[3])
-      if packet_length > len(message):
+      if msg_obj is None:
         break
-
-      # msg.unpack implicitly only examines its own bytes, and not trailing
-      # bytes
-      msg_obj = self.ofp_msgs[ofp_type]()
-      msg_obj.unpack(message)
 
       io_worker.consume_receive_buf(packet_length)
 
