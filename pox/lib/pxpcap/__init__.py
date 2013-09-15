@@ -1,25 +1,34 @@
-# Copyright 2011 James McCauley
+# Copyright 2011,2013 James McCauley
 #
-# This file is part of POX.
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at:
 #
-# POX is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
-# POX is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with POX.  If not, see <http://www.gnu.org/licenses/>.
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-import pxpcap as pcapc
+enabled = False
+try:
+  import pxpcap as pcapc
+  enabled = True
+except:
+  # We can at least import the rest
+  pass
+
 from pox.lib.addresses import IPAddr, EthAddr
-from threading import Thread
+import parser
+from threading import Thread, Lock
 import pox.lib.packet as pkt
 import copy
+
+# pcap's filter compiling function isn't threadsafe, so we use this
+# lock when compiling filters.
+_compile_lock = Lock()
 
 class PCap (object):
   @staticmethod
@@ -63,7 +72,14 @@ class PCap (object):
     return [d[0] for d in pcapc.findalldevs()]
 
   def __init__ (self, device = None, promiscuous = True, period = 10,
-                start = True, callback = None, filter = None):
+                start = True, callback = None, filter = None,
+                use_bytearray = False, **kw):
+    """
+    Initialize this instance
+
+    use_bytearray: specifies capturing to bytearray buffers instead of bytes
+    """
+
     if filter is not None:
       self.deferred_filter = (filter,)
     else:
@@ -74,6 +90,7 @@ class PCap (object):
     self.pcap = None
     self.promiscuous = promiscuous
     self.device = None
+    self.use_bytearray = use_bytearray
     self.period = period
     self.netmask = IPAddr("0.0.0.0")
     self._quitting = False
@@ -82,6 +99,11 @@ class PCap (object):
       self.callback = self.__class__._handle_rx
     else:
       self.callback = callback
+
+    for k,v in kw.items():
+      assert not hasattr(self, k)
+      setattr(self, k, v)
+
     if device is not None:
       self.open(device)
     if self.pcap is not None:
@@ -119,7 +141,7 @@ class PCap (object):
 
   def _thread_func (self):
     while not self._quitting:
-      pcapc.dispatch(self.pcap,100,self.callback,self)
+      pcapc.dispatch(self.pcap,100,self.callback,self,bool(self.use_bytearray))
       self.packets_received,self.packets_dropped = pcapc.stats(self.pcap)
 
     self._quitting = False
@@ -128,10 +150,11 @@ class PCap (object):
   def _handle_GoingDownEvent (self, event):
     self.close()
 
-  def start (self):
+  def start (self, addListeners=True):
     assert self._thread is None
-    from pox.core import core
-    core.addListeners(self, weak=True)
+    if addListeners:
+      from pox.core import core
+      core.addListeners(self, weak=True)
     self._thread = Thread(target=self._thread_func)
     #self._thread.daemon = True
     self._thread.start()
@@ -155,7 +178,7 @@ class PCap (object):
   def inject (self, data):
     if isinstance(data, pkt.ethernet):
       data = data.pack()
-    if not isinstance(data, bytes):
+    if not isinstance(data, (bytes,bytearray)):
       data = bytes(data) # Give it a try...
     return pcapc.inject(self.pcap, data)
 
@@ -190,8 +213,10 @@ class Filter (object):
       pcap_obj = pcapc.open_dead(link_type, snaplen)
     if isinstance(pcap_obj, PCap):
       pcap_obj = pcap_obj.pcap
-    self._pprogram = pcapc.compile(pcap_obj, filter,
-                                   1 if optimize else 0, netmask)
+
+    with _compile_lock:
+      self._pprogram = pcapc.compile(pcap_obj, filter,
+                                     1 if optimize else 0, netmask)
     if delpc:
       pcapc.close(pcap_obj)
 
@@ -200,10 +225,13 @@ class Filter (object):
       pcapc.freecode(self._pprogram)
 
 
-_link_type_names = {}
-for k,v in copy.copy(pcapc.__dict__).iteritems():
-  if k.startswith("DLT_"):
-    _link_type_names[v] = k
+try:
+  _link_type_names = {}
+  for k,v in copy.copy(pcapc.__dict__).iteritems():
+    if k.startswith("DLT_"):
+      _link_type_names[v] = k
+except:
+  pass
 
 def get_link_type_name (dlt):
   return _link_type_names.get(dlt, "<Unknown " + str(dlt) + ">")
@@ -247,12 +275,15 @@ def launch (interface = "en1"):
   print "Interface:",interface
 
   p = PCap(interface, callback = cb,
-           filter = "icmp")#[icmptype] != icmp-echoreply")
+           filter = "icmp")
+           #[icmptype] != icmp-echoreply")
            #filter = "ip host 74.125.224.148")
+
+  p.set_direction(True, True)
 
   def ping (eth='00:18:02:6e:ce:55', ip='192.168.0.1'):
     e = pkt.ethernet()
-    e.src = p.addresses['ethernet']['addr']
+    e.src = p.addresses['ethernet']['addr'] or '02:00:00:11:22:33'
     e.dst = EthAddr(eth)
     e.type = e.IP_TYPE
     ipp = pkt.ipv4()
@@ -266,6 +297,9 @@ def launch (interface = "en1"):
     e.payload = ipp
 
     p.inject(e)
+
+  def broadcast ():
+    ping('ff:ff:ff:ff:ff:ff','255.255.255.255')
 
   import code
   code.interact(local=locals())

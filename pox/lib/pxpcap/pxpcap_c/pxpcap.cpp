@@ -1,20 +1,17 @@
 /*************************************************************************
-Copyright 2011 James McCauley
+Copyright 2011,2013 James McCauley
 
-This file is part of POX.
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at:
 
-POX is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+    http://www.apache.org/licenses/LICENSE-2.0
 
-POX is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with POX.  If not, see <http://www.gnu.org/licenses/>.
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
 **************************************************************************/
 
 /*
@@ -25,7 +22,13 @@ Do the tough stuff in Python.
 Don't think it can be done in ctypes because of how it
 releases and reacquires the GIL for callbacks.
 
+---
+
+Currently assumes longs can hold a pointer.  We should
+check this.
+
 */
+
 
 #include <Python.h>
 #ifdef WIN32
@@ -142,6 +145,11 @@ static PyObject * p_findalldevs (PyObject *self, PyObject *args)
     PyObject * addrs = PyList_New(0);
     for (pcap_addr_t * a = d->addresses; a != NULL; a = a->next)
     {
+      if (a->addr == NULL)
+      {
+        // No idea what to do with this entry!
+        continue;
+      }
       if (a->addr->sa_family == AF_INET)
       {
         // Assume all members for this entry are AF_INET...
@@ -268,6 +276,7 @@ struct thread_state
   PyObject * pycallback;
   PyObject * user;
   int exception;
+  int use_bytearray; // 0 means bytes, 1 means bytearray
 };
 
 static void ld_callback (u_char * my_thread_state, const struct pcap_pkthdr * h, const u_char * data)
@@ -276,8 +285,24 @@ static void ld_callback (u_char * my_thread_state, const struct pcap_pkthdr * h,
   PyEval_RestoreThread(ts->ts);
   PyObject * args;
   PyObject * rv;
-  args = Py_BuildValue("Os#lli",
-      ts->user, data, h->caplen, (long)h->ts.tv_sec, (long)h->ts.tv_usec, h->len);
+  if (ts->use_bytearray)
+  {
+    args = Py_BuildValue("ONlli",
+                         ts->user,
+                         PyByteArray_FromStringAndSize((const char *)data, h->caplen),
+                         (long)h->ts.tv_sec,
+                         (long)h->ts.tv_usec,
+                         h->len);
+  }
+  else
+  {
+    args = Py_BuildValue("Os#lli",
+                         ts->user,
+                         data, h->caplen,
+                         (long)h->ts.tv_sec,
+                         (long)h->ts.tv_usec,
+                         h->len);
+  }
   rv = PyEval_CallObject(ts->pycallback, args);
   Py_DECREF(args);
   if (rv)
@@ -299,7 +324,7 @@ static PyObject * p_loop_or_dispatch (int dispatch, PyObject *self, PyObject *ar
   thread_state ts;
   int cnt;
   int rv;
-  if (!PyArg_ParseTuple(args, "liOO", &ppcap, &cnt, &ts.pycallback, &ts.user)) return NULL;
+  if (!PyArg_ParseTuple(args, "liOOi", &ppcap, &cnt, &ts.pycallback, &ts.user, &ts.use_bytearray)) return NULL;
   Py_INCREF(ts.user);
 
   ts.ppcap = ppcap;
@@ -465,15 +490,20 @@ static PyObject * p_fileno (PyObject *self, PyObject *args)
 static PyObject * p_inject (PyObject *self, PyObject *args)
 {
   pcap_t * ppcap;
-  u_char * data;
-  int len;
-  if (!PyArg_ParseTuple(args, "ls#", (long*)&ppcap, &data, &len)) return NULL;
+  Py_buffer pbuf;
+  if (!PyArg_ParseTuple(args, "ls*", (long int*)&ppcap, &pbuf)) return NULL;
+  if (!PyBuffer_IsContiguous(&pbuf, 'C'))
+  {
+    PyBuffer_Release(&pbuf);
+    return PyErr_Format(PyExc_RuntimeError, "Buffer not contiguous");
+  }
 #ifdef WIN32
-  int rv = pcap_sendpacket(ppcap, data, len);
+  int rv = pcap_sendpacket(ppcap, pbuf.buf, pbuf.len);
   rv = rv ? 0 : len;
 #else
-  int rv = pcap_inject(ppcap, data, len);
+  int rv = pcap_inject(ppcap, pbuf.buf, pbuf.len);
 #endif
+  PyBuffer_Release(&pbuf);
   return Py_BuildValue("i", rv);
 }
 
@@ -498,7 +528,7 @@ static PyMethodDef pxpcapmethods[] =
   {"datalink", p_datalink, METH_VARARGS, "Get data link layer type.\nPass it a ppcap."},
   {"fileno", p_fileno, METH_VARARGS, "Get file descriptor for live capture\nPass it a ppcap."},
   {"close", p_close, METH_VARARGS, "Close capture device or file\nPass it a ppcap"},
-  {"loop", p_loop, METH_VARARGS, "Capture packets\nPass it a ppcap, a count, a callback, and an opaque 'user data'.\nCallback params are same as first four of next_ex()'s return value"},
+  {"loop", p_loop, METH_VARARGS, "Capture packets\nPass it a ppcap, a count, a callback, opaque 'user data', and a boolean\n(True if you want to capture to bytearray instead of bytes).\nCallback params are same as first four of next_ex()'s return value"},
   {"dispatch", p_dispatch, METH_VARARGS, "Capture packets\nVery similar to loop()."},
   {"open_live", p_open_live, METH_VARARGS, "Open a capture device\nPass it dev name, snaplen (max capture length), promiscuous flag (1 for on, 0 for off), timeout milliseconds.\nReturns ppcap."},
   {"open_dead", p_open_dead, METH_VARARGS, "Open a dummy capture device\nPass it a linktype and snaplen (max cap length).\nReturns ppcap."},
