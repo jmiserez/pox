@@ -414,6 +414,14 @@ class SoftwareSwitchBase (object):
     msg = ofp_port_status(desc=port, reason=reason)
     self.send(msg)
 
+  def send_flow_mod_failure(self, msg, fail_code):
+    """
+    Send error message that application of flow_mod has failed.
+    """
+    self.log.debug("Flow Mod Failed %s %s", self.name, str(msg))
+    err = ofp_error(type=OFPET_FLOW_MOD_FAILED, code=fail_code)
+    self.send(err)
+
   def rx_packet (self, packet, in_port):
     """
     process a dataplane packet
