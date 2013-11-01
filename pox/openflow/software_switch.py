@@ -149,6 +149,14 @@ class SoftwareSwitch(EventMixin):
     else:
       self.log.debug("Asked to send message %s, but not connected", message)
 
+  def send_flow_mod_failure(self, msg, fail_code):
+    """
+    Send error message that application of flow_mod has failed.
+    """
+    self.log.debug("Flow Mod Failed %s %s", self.name, str(msg))
+    err = ofp_error(type=OFPET_FLOW_MOD_FAILED, code=fail_code)
+    self.send(err)
+
   # ==================================== #
   #    Reactive OFP processing           #
   # ==================================== #
