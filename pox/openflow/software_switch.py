@@ -45,7 +45,7 @@ class DpPacketOut (Event):
     return None
 
   def get_switch_id(self):
-    if hasattr(self.node, "dpid"):
+    if hasattr(self.node, "hid"):
       return None
     return self.node.dpid
 
