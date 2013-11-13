@@ -508,6 +508,7 @@ class Connection (EventMixin):
   def close (self):
     if not self.disconnected:
       self.info("closing connection")
+      self.disconnect()
     else:
       #self.msg("closing connection")
       pass
@@ -541,6 +542,7 @@ class Connection (EventMixin):
     """
     if self.dpid != None:
       self.ofnexus.raiseEvent(ConnectionDown(self))
+      self.raiseEvent(ConnectionDown(self))
 
     try:
       #deferredSender.kill(self)
