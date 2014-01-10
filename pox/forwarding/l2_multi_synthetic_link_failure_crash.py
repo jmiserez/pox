@@ -31,7 +31,7 @@ from collections import defaultdict
 from pox.openflow.discovery import Discovery
 from pox.lib.util import dpidToStr
 
-import os
+import sys
 
 log = core.getLogger()
 
@@ -368,12 +368,14 @@ class l2_multi (EventMixin):
         #print sw,sw1,port,l.port1
         if sw is sw1 and port == l.port1:
           if mac not in bad_macs:
-            log.debug("Unlearned %s", mac)
-            bad_macs.add(mac)
+            log.critical("You found the synthetic link failure bug!")
+            sys.exit(1)
+            #log.debug("Unlearned %s", mac)
+            #bad_macs.add(mac)
         if sw is sw2 and port == l.port2:
           if mac not in bad_macs:
             log.critical("You found the synthetic link failure bug!")
-            os.exit(1)
+            sys.exit(1)
             #log.debug("Unlearned %s", mac)
             #bad_macs.add(mac)
       for mac in bad_macs:
