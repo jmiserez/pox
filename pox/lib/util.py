@@ -423,7 +423,8 @@ def connect_with_backoff(code_block, max_backoff_seconds=32):
         time.sleep(backoff_seconds)
       backoff_seconds <<= 1
 
-def connect_socket_with_backoff(address="localhost", port=None, max_backoff_seconds=32):
+def connect_socket_with_backoff(address="localhost", port=None,
+                                max_backoff_seconds=32, socket_ctor=socket.socket):
   '''
   Connect to the given address and port. If the connection attempt fails,
   exponentially back off, up to the max backoff.
@@ -444,7 +445,7 @@ def connect_socket_with_backoff(address="localhost", port=None, max_backoff_seco
 
   print >>sys.stderr, "connect_socket_with_backoff %s" % str(server_info)
   def connect():
-    sock = socket.socket(sock_type, socket.SOCK_STREAM)
+    sock = socket_ctor(sock_type, socket.SOCK_STREAM)
     sock.connect( server_info )
     return sock
 
