@@ -374,7 +374,7 @@ class SoftwareSwitch(EventMixin):
     ''' Take the given port down, and send a port_status message to the controller '''
     port_no = port.port_no
     if port_no not in self.ports:
-      raise RuntimeError("port_no %d not in %s's ports" % (port_no, str(self)))
+      raise ValueError("port_no %d not in %s's ports" % (port_no, str(self)))
     self.down_port_nos.add(port_no)
     self.send_port_status(port, OFPPR_DELETE)
 
@@ -403,7 +403,7 @@ class SoftwareSwitch(EventMixin):
         self.log.warn("out_port %d == in_port. Dropping" % (out_port,))
         return
       if port_no not in self.ports:
-        raise RuntimeError("Invalid physical output port: %x" % port_no)
+        raise ValueError("Invalid physical output port: %x" % port_no)
       if port_no in self.down_port_nos:
         #raise RuntimeError("output port %x currently down!" % port_no)
         self.log.warn("Port %d is currently down. Dropping packet", port_no)
