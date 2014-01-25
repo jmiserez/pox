@@ -6,7 +6,7 @@ from pox.lib.revent import EventMixin
 from pox.openflow import ConnectionUp, ConnectionDown, PacketIn
 import pox.openflow.libopenflow_01 as of
 import pox.lib.packet.ethernet as ethernet
-import pox.lib.packet.arp as arp
+import pox.lib.packet.ipv4 as ipv4
 from pox.lib.addresses import EthAddr
 
 class fake_capability_manager(EventMixin):
@@ -21,9 +21,11 @@ class fake_capability_manager(EventMixin):
 
   def _handle_PacketIn(self, event):
      pkt = ethernet(raw=event.ofp.data)
-     # Our "capability" is an ARP reply. Fake for now
-     if (pkt.type == ethernet.ARP_TYPE and pkt.next.opcode == arp.REPLY and
-         pkt.src == EthAddr("12:34:56:78:01:03")): # EthAddr("00:00:00:01:01:02")):
+     # Our "capability" is an TCP RST. Fake for now
+     if (pkt.type == ethernet.IP_TYPE and
+         pkt.next.protocol == ipv4.TCP_PROTOCOL and
+         # pkt.next.next.RST and
+         pkt.src == EthAddr("12:34:56:78:01:02")):
        msg = of.ofp_flow_mod()
        msg.priority = 123 # magic number
        msg.buffer_id = event.ofp.buffer_id
