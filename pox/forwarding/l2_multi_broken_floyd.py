@@ -127,10 +127,6 @@ def _get_path (src, dst, final_port):
 #  print "cooked: ",r
 
   # assert _check_path(r)
-  # SYNTHETIC BUG:
-  if len(r) >= 3:
-    r.pop(2)
-
   return r
 
 
@@ -163,8 +159,15 @@ class Switch (EventMixin):
     switch.connection.send(msg)
 
   def _install_path (self, p, match, buffer_id = -1):
-    for sw,port in p[1:]:
-      self._install(sw, port, match)
+    # SYNTHETIC BUG
+    if len(p) >= 3:
+      # p[2][1] - 1 is the wrong port
+      for sw,port in p[1:2] + p[3:]:
+        self._install(sw, port, match)
+      self._install(p[2][0], p[2][1] - 1, match)
+    else:
+      for sw,port in p[1:]:
+        self._install(sw, port, match)
 
     self._install(p[0][0], p[0][1], match, buffer_id)
 
