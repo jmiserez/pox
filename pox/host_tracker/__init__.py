@@ -17,13 +17,13 @@
 
 from pox.core import core
 import pox
-import host_tracker
+import buggy_host_tracker
 log = core.getLogger()
 import logging
 log.setLevel(logging.INFO)
 
 def launch (**kw):
-  core.registerNew(host_tracker.HostTracker)
+  core.registerNew(buggy_host_tracker.HostTracker)
   for k, v in kw.iteritems():
     if k in host_tracker.timeoutSec:
       host_tracker.timeoutSec[k] = int(v)
