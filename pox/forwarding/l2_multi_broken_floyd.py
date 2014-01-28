@@ -159,15 +159,8 @@ class Switch (EventMixin):
     switch.connection.send(msg)
 
   def _install_path (self, p, match, buffer_id = -1):
-    # SYNTHETIC BUG
-    if len(p) >= 3:
-      # p[2][1] - 1 is the wrong port
-      for sw,port in p[1:2] + p[3:]:
-        self._install(sw, port, match)
-      self._install(p[2][0], p[2][1] - 1, match)
-    else:
-      for sw,port in p[1:]:
-        self._install(sw, port, match)
+    for sw,port in p[1:]:
+      self._install(sw, port, match)
 
     self._install(p[0][0], p[0][1], match, buffer_id)
 
@@ -175,6 +168,17 @@ class Switch (EventMixin):
 
   def install_path (self, dst_sw, last_port, match, event):#buffer_id, packet):
     p = _get_path(self, dst_sw, last_port)
+    import random
+    if self.connection.dpid == 1 and dst_sw.connection.dpid == 3:
+      # SYNTHETIC BUG: make a >2 hop loop
+      print "SYNTHETIC BUG"
+      match.in_port = None
+      print "MATCH", match
+      p = _get_path(self, switches[2], 1)[:-1] + \
+          _get_path(switches[2], dst_sw, 1)[:-1] + \
+          _get_path(dst_sw, self, last_port)[:-1]
+      print p
+
     if p is None:
       log.warning("Can't get from %s to %s", match.dl_src, match.dl_dst)
 
