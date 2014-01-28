@@ -66,6 +66,7 @@ def handle_HELLO (con, msg): #S
   #con.msg("HELLO wire protocol " + hex(msg.version))
 
   # Send a features request
+
   msg = of.ofp_features_request()
   con.send(msg.pack())
 
@@ -696,7 +697,7 @@ class OpenFlow_01_Task (Task):
   """
   The main recoco thread for listening to openflow messages
   """
-  def __init__ (self, port = 6633, address = '0.0.0.0'):
+  def __init__ (self, port = 6633, address = '0.0.0.0', max_connections=-1):
     Task.__init__(self)
     if port is None:
       # Unix domain socket
@@ -707,6 +708,7 @@ class OpenFlow_01_Task (Task):
       self.server_info = (address, int(port))
       self.sock_type = socket.AF_INET
 
+    self.max_connections = max_connections
     core.addListener(pox.core.GoingUpEvent, self._handle_GoingUpEvent)
 
   def _handle_GoingUpEvent (self, event):
@@ -762,6 +764,11 @@ class OpenFlow_01_Task (Task):
               new_sock.setblocking(0)
               # Note that instantiating a Connection object fires a
               # ConnectionUp event (after negotation has completed)
+              self.max_connections -= 1
+              if self.max_connections == 0:
+                print "YOU FOUND THE MEMORY LEAK! TEN POINTS TO SLYTHERIN"
+                import os
+                os._exit(1)
               newcon = Connection(new_sock)
               sockets.append( newcon )
               #print str(newcon) + " connected"
@@ -814,7 +821,7 @@ for h in handlerMap:
   #print handlerMap[h]
 
 
-def launch (port = 6633, address = "0.0.0.0"):
+def launch (port = 6633, address = "0.0.0.0", max_connections=-1):
   ''' if address is a filename rather than an IP address, will use Unix domain
   sockets instead of TCP sockets'''
   if core.hasComponent('of_01'):
@@ -823,7 +830,8 @@ def launch (port = 6633, address = "0.0.0.0"):
   if (re.match("[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}", address) or
       address == "localhost"):
     # Normal TCP socket
-    l = OpenFlow_01_Task(port=int(port), address=address)
+    l = OpenFlow_01_Task(port=int(port), address=address,
+                         max_connections=int(max_connections))
   else:
     # Unix domain socket -- address is a filename
     # Make sure the socket does not already exist
@@ -832,7 +840,8 @@ def launch (port = 6633, address = "0.0.0.0"):
     except OSError:
       if os.path.exists(address):
         raise RuntimeError("can't remove PIPE socket %s" % str(address))
-    l = OpenFlow_01_Task(address=address, port=None)
+    l = OpenFlow_01_Task(address=address, port=None,
+                         max_connections=int(max_connections))
 
   core.register("of_01", l)
   return l
