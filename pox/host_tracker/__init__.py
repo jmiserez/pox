@@ -31,8 +31,8 @@ def launch (**kw):
     elif k == 'pingLim':
       host_tracker.PingCtrl.pingLim = int(v)
       log.warn("Changing ping limit to %s",v)
+    elif k == 'max_migrations':
+      HostTracker.max_migrations = int(v)
     else:
       log.warn("Unknown option: %s(=%s)",k,v)
-      
-     
 
