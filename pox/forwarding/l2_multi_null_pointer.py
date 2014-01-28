@@ -287,6 +287,7 @@ class Switch (EventMixin):
       self.connection = None
       self._listeners = None
       print "YOU FOUND THE NULL POINTER. 10 POINTS TO HUFFLEPUFF"
+      import os
       os._exit(1)
 
   def connect (self, connection):
