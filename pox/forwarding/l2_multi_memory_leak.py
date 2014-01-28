@@ -310,18 +310,14 @@ class l2_multi (EventMixin):
     PathInstalled,
   ])
 
-  def __init__ (self, max_link_failures=300):
+  def __init__ (self, max_switch_recoveries=300):
     self.listenTo(core.openflow, priority=0)
     self.listenTo(core.openflow_discovery)
-    self.max_link_failures = max_link_failures
-    self.observed_link_failures = 0
+    self.max_switch_recoveries = max_switch_recoveries
+    self.observed_switch_recoveries = 0
 
   def _handle_LinkEvent (self, event):
-    self.observed_link_failures += 1
-    if self.observed_link_failures > self.max_link_failures:
-      print "YOU FOUND THE MEMORY LEAK! TEN POINTS TO SLYTHERIN"
-      import os
-      os._exit(1)
+
 
     def flip (link):
       return Discovery.Link(link[2],link[3], link[0],link[1])
@@ -384,6 +380,13 @@ class l2_multi (EventMixin):
         del mac_map[mac]
 
   def _handle_ConnectionUp (self, event):
+    self.observed_switch_recoveries += 1
+    print "OBSERVED_SWITCH_RECOVERIES", self.observed_switch_recoveries
+    if self.observed_switch_recoveries > self.max_switch_recoveries:
+      print "YOU FOUND THE MEMORY LEAK! TEN POINTS TO SLYTHERIN"
+      import os
+      os._exit(1)
+
     sw = switches.get(event.dpid)
     if sw is None:
       # New switch
@@ -394,10 +397,10 @@ class l2_multi (EventMixin):
       sw.connect(event.connection)
 
 
-def launch (max_link_failures=150):
+def launch (max_switch_recoveries=150):
   if 'openflow_discovery' not in core.components:
     import pox.openflow.discovery as discovery
     core.registerNew(discovery.Discovery)
 
-  core.registerNew(l2_multi, max_link_failures=int(max_link_failures))
+  core.registerNew(l2_multi, max_switch_recoveries=int(max_switch_recoveries))
 
