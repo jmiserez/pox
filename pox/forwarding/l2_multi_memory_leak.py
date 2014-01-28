@@ -394,10 +394,10 @@ class l2_multi (EventMixin):
       sw.connect(event.connection)
 
 
-def launch (max_link_failures=200):
+def launch (max_link_failures=150):
   if 'openflow_discovery' not in core.components:
     import pox.openflow.discovery as discovery
     core.registerNew(discovery.Discovery)
 
-  core.registerNew(l2_multi, max_link_failures=max_link_failures)
+  core.registerNew(l2_multi, max_link_failures=int(max_link_failures))
 
