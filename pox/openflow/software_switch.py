@@ -371,19 +371,21 @@ class SoftwareSwitch(EventMixin):
       self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_NO_MATCH)
 
   def take_port_down(self, port):
-    ''' Take the given port down, and send a port_status message to the controller '''
+    ''' Take the given port down (simulating the link having gone away), and send a port_status message to the controller '''
     port_no = port.port_no
     if port_no not in self.ports:
       raise ValueError("port_no %d not in %s's ports" % (port_no, str(self)))
     self.down_port_nos.add(port_no)
-    self.send_port_status(port, OFPPR_DELETE)
+    port.state |= OFPPS_LINK_DOWN
+    self.send_port_status(port, OFPPR_MODIFY)
 
   def bring_port_up(self, port):
-    ''' Bring the given port up, and send a port_status message to the controller '''
+    ''' Bring the given port up (simluating the link having come back up), and send a port_status message to the controller '''
     port_no = port.port_no
     self.down_port_nos.discard(port_no)
+    port.state &= ~OFPPS_LINK_DOWN
     self.ports[port_no] = port
-    self.send_port_status(port, OFPPR_ADD)
+    self.send_port_status(port, OFPPR_MODIFY)
 
   # ==================================== #
   #    Helper Methods                    #
