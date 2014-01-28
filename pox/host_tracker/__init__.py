@@ -25,14 +25,14 @@ log.setLevel(logging.INFO)
 def launch (**kw):
   core.registerNew(buggy_host_tracker.HostTracker)
   for k, v in kw.iteritems():
-    if k in host_tracker.timeoutSec:
-      host_tracker.timeoutSec[k] = int(v)
+    if k in buggy_host_tracker.timeoutSec:
+      buggy_host_tracker.timeoutSec[k] = int(v)
       log.warn("Changing timer parameter: %s = %s",k,v)
     elif k == 'pingLim':
-      host_tracker.PingCtrl.pingLim = int(v)
+      buggy_host_tracker.PingCtrl.pingLim = int(v)
       log.warn("Changing ping limit to %s",v)
     elif k == 'max_migrations':
-      HostTracker.max_migrations = int(v)
+      buggy_host_tracker.HostTracker.max_migrations = int(v)
     else:
       log.warn("Unknown option: %s(=%s)",k,v)
 
