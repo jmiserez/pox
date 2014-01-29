@@ -830,7 +830,8 @@ def launch (port = 6633, address = "0.0.0.0", max_connections=-1):
   if (re.match("[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}", address) or
       address == "localhost"):
     # Normal TCP socket
-    l = OpenFlow_01_Task(port=int(port), address=address, max_connections=max_connections)
+    l = OpenFlow_01_Task(port=int(port), address=address,
+            max_connections=int(max_connections))
   else:
     # Unix domain socket -- address is a filename
     # Make sure the socket does not already exist
@@ -839,7 +840,8 @@ def launch (port = 6633, address = "0.0.0.0", max_connections=-1):
     except OSError:
       if os.path.exists(address):
         raise RuntimeError("can't remove PIPE socket %s" % str(address))
-    l = OpenFlow_01_Task(address=address, port=None, max_connections=max_connections)
+    l = OpenFlow_01_Task(address=address, port=None,
+            max_connections=int(max_connections))
 
   core.register("of_01", l)
   return l
