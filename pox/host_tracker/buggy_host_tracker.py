@@ -122,6 +122,7 @@ class IpEntry (Alive):
 
 
 class HostTracker (EventMixin):
+  max_migrations = 300
 
   _eventMixin_events = set([
     HostJoin, # Defined in pox.lib.graph
@@ -262,7 +263,7 @@ class HostTracker (EventMixin):
 
       # SYNTHETIC BUG
       self.migrations_observed += 1
-      if self.migrations_observed == 300:
+      if self.migrations_observed == HostTracker.max_migrations:
         import os
         print "YOU FOUND THE MEMORY LEAK! 10 POINTS TO SLYTHERIN"
         os._exit(1)

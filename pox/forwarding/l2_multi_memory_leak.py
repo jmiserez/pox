@@ -126,7 +126,8 @@ def _get_path (src, dst, final_port):
   r.append((dst, final_port))
 #  print "cooked: ",r
 
-  # assert _check_path(r)
+  assert _check_path(r)
+
   return r
 
 
@@ -168,17 +169,6 @@ class Switch (EventMixin):
 
   def install_path (self, dst_sw, last_port, match, event):#buffer_id, packet):
     p = _get_path(self, dst_sw, last_port)
-    import random
-    if self.connection.dpid == 1 and dst_sw.connection.dpid == 3:
-      # SYNTHETIC BUG: make a >2 hop loop
-      print "SYNTHETIC BUG"
-      match.in_port = None
-      print "MATCH", match
-      p = _get_path(self, switches[2], 1)[:-1] + \
-          _get_path(switches[2], dst_sw, 1)[:-1] + \
-          _get_path(dst_sw, self, last_port)[:-1]
-      print p
-
     if p is None:
       log.warning("Can't get from %s to %s", match.dl_src, match.dl_dst)
 
@@ -320,11 +310,15 @@ class l2_multi (EventMixin):
     PathInstalled,
   ])
 
-  def __init__ (self):
+  def __init__ (self, max_switch_recoveries=300):
     self.listenTo(core.openflow, priority=0)
     self.listenTo(core.openflow_discovery)
+    self.max_switch_recoveries = max_switch_recoveries
+    self.observed_switch_recoveries = 0
 
   def _handle_LinkEvent (self, event):
+
+
     def flip (link):
       return Discovery.Link(link[2],link[3], link[0],link[1])
 
@@ -386,6 +380,13 @@ class l2_multi (EventMixin):
         del mac_map[mac]
 
   def _handle_ConnectionUp (self, event):
+    self.observed_switch_recoveries += 1
+    print "OBSERVED_SWITCH_RECOVERIES", self.observed_switch_recoveries
+    if self.observed_switch_recoveries > self.max_switch_recoveries:
+      print "YOU FOUND THE MEMORY LEAK! TEN POINTS TO SLYTHERIN"
+      import os
+      os._exit(1)
+
     sw = switches.get(event.dpid)
     if sw is None:
       # New switch
@@ -396,10 +397,10 @@ class l2_multi (EventMixin):
       sw.connect(event.connection)
 
 
-def launch ():
+def launch (max_switch_recoveries=80):
   if 'openflow_discovery' not in core.components:
     import pox.openflow.discovery as discovery
     core.registerNew(discovery.Discovery)
-    
-  core.registerNew(l2_multi)
+
+  core.registerNew(l2_multi, max_switch_recoveries=int(max_switch_recoveries))
 
