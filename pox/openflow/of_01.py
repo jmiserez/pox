@@ -452,6 +452,11 @@ class Connection (EventMixin):
   openflow-enabled switch.
   If the switch reconnects, a new connection object is instantiated.
   """
+  # SYNTHETIC BUG
+  synthetic_multithreading_bug = False
+  main_thread_in_critical_section = False
+  route_thread = None
+
   _eventMixin_events = set([
     ConnectionUp,
     ConnectionDown,
@@ -618,11 +623,31 @@ class Connection (EventMixin):
       # msg.unpack implicitly only examines its own bytes, and not trailing
       # bytes
       msg.unpack(self.buf)
+      if type(msg) == ofp_port_status and Connection.synthetic_multithreading_bug:
+        # SYNTHETIC BUG
+        Connection.main_thread_in_critical_section = True
+        def fake_routing_thread():
+          # Start computing a route
+          time.sleep(0.5)
+          # Read the same datastructure once more
+          if Connection.main_thread_in_critical_section:
+            print "Concurrent modification exception!"
+            import os
+            os._exit(1)
+          Connection.route_thread = None
+
+        if Connection.route_thread is None:
+          import threading
+          t = threading.Thread(target=fake_routing_thread)
+          Connection.route_thread = t
+          t.start()
+
       self.buf = self.buf[packet_length:]
       l = len(self.buf)
       try:
         h = handlers[ofp_type]
         h(self, msg)
+        Connection.main_thread_in_critical_section = False
       except ValueError:
         raise
       except AttributeError:
@@ -821,9 +846,11 @@ for h in handlerMap:
   #print handlerMap[h]
 
 
-def launch (port = 6633, address = "0.0.0.0", max_connections=-1):
+def launch (port = 6633, address = "0.0.0.0", max_connections=-1,
+            synthetic_multithreading_bug=False):
   ''' if address is a filename rather than an IP address, will use Unix domain
   sockets instead of TCP sockets'''
+  Connection.synthetic_multithreading_bug = synthetic_multithreading_bug
   if core.hasComponent('of_01'):
     return None
 
