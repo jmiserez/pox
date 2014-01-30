@@ -583,6 +583,11 @@ class SoftwareSwitch(EventMixin):
   def __repr__(self):
     return "SoftwareSwitch(dpid=%d, num_ports=%d)" % (self.dpid, len(self.ports))
 
+class HandshakeState:
+  hello = 1
+  feature_request = 2
+  done = 3
+
 class OFConnection (object):
   """ A codec for OpenFlow messages. Decodes and encodes OpenFlow messages (ofp_message)
       into byte arrays.
@@ -615,6 +620,7 @@ class OFConnection (object):
     self.ID = OFConnection.ID
     self.log = logging.getLogger("ControllerConnection(id=%d)" % self.ID)
     self.on_message_received = None
+    self.handshake_state = HandshakeState.hello
 
   def set_message_handler(self, handler):
     self.on_message_received = handler
@@ -629,6 +635,18 @@ class OFConnection (object):
     library to it and get the expected result, for example.
     """
     if type(data) is not bytes:
+      if self.handshake_state == HandshakeState.hello:
+        if isinstance(data, ofp_hello):
+          self.handshake_state = HandshakeState.feature_request
+        else:
+          self.log.warn("In state HELLO -- supressing unexpected message: %s", data)
+          return
+      elif self.handshake_state == HandshakeState.feature_request:
+        if isinstance(data, ofp_features_reply):
+          self.handshake_state = HandshakeState.done
+        else:
+          self.log.warn("In state FEATURE_REPLY -- supressing unexpected message: %s", data)
+          return
       if hasattr(data, 'pack'):
         data = data.pack()
     self.io_worker.send(data)
