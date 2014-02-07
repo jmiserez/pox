@@ -56,7 +56,7 @@ class SoftwareSwitch(EventMixin):
   _eventMixin_events = set([DpPacketOut])
 
   def __init__(self, dpid, name=None, ports=4,
-               miss_send_len=128, n_buffers=100, n_tables=1, capabilities=None):
+               miss_send_len=128, n_buffers=4, n_tables=1, capabilities=None):
     '''
     Initialize switch
      - ports is a list of ofp_phy_ports
@@ -72,8 +72,12 @@ class SoftwareSwitch(EventMixin):
     self.n_buffers = n_buffers
     ##Number of tables
     self.n_tables= n_tables
+    # Table size limit
+    self.table_limit = 25
     # Note that there is one switch table in the OpenFlow 1.0 world
     self.table = SwitchFlowTable()
+    # Flag for whether there was an error applying a flow_mod
+    self.ofp_error_sent = False
     # buffer for packets during packet_in
     self.packet_buffer = []
     if(ports == None or isinstance(ports, int)):
@@ -186,6 +190,12 @@ class SoftwareSwitch(EventMixin):
   def _receive_flow_mod(self, ofp):
     """Handle flow mod: just print it here
     """
+    assert(self.n_tables == 1)
+    self.log.debug("INSIDE RECEIVE_FLOW_MOD")
+    if len(self.table) >= self.table_limit:
+      self.send_flow_mod_failure("Flow table full", fail_code=OFPFMFC_ALL_TABLES_FULL)
+      self.ofp_error_sent = True
+      return
     self.log.debug("Flow mod %s: %s", self.name, ofp.show())
     self.table.process_flow_mod(ofp)
     if(ofp.buffer_id > 0):

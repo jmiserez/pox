@@ -46,9 +46,9 @@ import copy
 from collections import *
 
 LLDP_TTL             = 120 # currently ignored
-LLDP_SEND_CYCLE      = 5.0
-TIMEOUT_CHECK_PERIOD = 5.0
-LINK_TIMEOUT         = 10.0
+LLDP_SEND_CYCLE      = 50.0
+TIMEOUT_CHECK_PERIOD = 50.0
+LINK_TIMEOUT         = 100.0
 
 log = core.getLogger()
 
