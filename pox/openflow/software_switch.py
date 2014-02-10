@@ -583,8 +583,9 @@ class SoftwareSwitch(EventMixin):
   def __repr__(self):
     return "SoftwareSwitch(dpid=%d, num_ports=%d)" % (self.dpid, len(self.ports))
 
-class HandshakeState:
+class HandshakeState(object):
   hello = 1
+  # TODO(cs): do all controllers send features requests?
   feature_request = 2
   done = 3
 
