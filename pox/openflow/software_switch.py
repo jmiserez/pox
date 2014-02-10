@@ -371,19 +371,21 @@ class SoftwareSwitch(EventMixin):
       self.send_packet_in(in_port, buffer_id, packet, self.xid_count.next(), reason=OFPR_NO_MATCH)
 
   def take_port_down(self, port):
-    ''' Take the given port down, and send a port_status message to the controller '''
+    ''' Take the given port down (simulating the link having gone away), and send a port_status message to the controller '''
     port_no = port.port_no
     if port_no not in self.ports:
       raise ValueError("port_no %d not in %s's ports" % (port_no, str(self)))
     self.down_port_nos.add(port_no)
-    self.send_port_status(port, OFPPR_DELETE)
+    port.state |= OFPPS_LINK_DOWN
+    self.send_port_status(port, OFPPR_MODIFY)
 
   def bring_port_up(self, port):
-    ''' Bring the given port up, and send a port_status message to the controller '''
+    ''' Bring the given port up (simluating the link having come back up), and send a port_status message to the controller '''
     port_no = port.port_no
     self.down_port_nos.discard(port_no)
+    port.state &= ~OFPPS_LINK_DOWN
     self.ports[port_no] = port
-    self.send_port_status(port, OFPPR_ADD)
+    self.send_port_status(port, OFPPR_MODIFY)
 
   # ==================================== #
   #    Helper Methods                    #
@@ -581,6 +583,11 @@ class SoftwareSwitch(EventMixin):
   def __repr__(self):
     return "SoftwareSwitch(dpid=%d, num_ports=%d)" % (self.dpid, len(self.ports))
 
+class HandshakeState:
+  hello = 1
+  feature_request = 2
+  done = 3
+
 class OFConnection (object):
   """ A codec for OpenFlow messages. Decodes and encodes OpenFlow messages (ofp_message)
       into byte arrays.
@@ -613,6 +620,7 @@ class OFConnection (object):
     self.ID = OFConnection.ID
     self.log = logging.getLogger("ControllerConnection(id=%d)" % self.ID)
     self.on_message_received = None
+    self.handshake_state = HandshakeState.hello
 
   def set_message_handler(self, handler):
     self.on_message_received = handler
@@ -627,6 +635,18 @@ class OFConnection (object):
     library to it and get the expected result, for example.
     """
     if type(data) is not bytes:
+      if self.handshake_state == HandshakeState.hello:
+        if isinstance(data, ofp_hello):
+          self.handshake_state = HandshakeState.feature_request
+        else:
+          self.log.warn("In state HELLO -- supressing unexpected message: %s", data)
+          return
+      elif self.handshake_state == HandshakeState.feature_request:
+        if isinstance(data, ofp_features_reply):
+          self.handshake_state = HandshakeState.done
+        else:
+          self.log.warn("In state FEATURE_REPLY -- supressing unexpected message: %s", data)
+          return
       if hasattr(data, 'pack'):
         data = data.pack()
     self.io_worker.send(data)
