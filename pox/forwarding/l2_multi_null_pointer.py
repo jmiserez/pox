@@ -281,14 +281,15 @@ class Switch (EventMixin):
         self.install_path(dest[0], dest[1], match, event)
 
   def disconnect (self):
+    import os
+    print "YOU FOUND THE NULL POINTER. 10 POINTS TO HUFFLEPUFF"
+    os._exit(1)
+
     if self.connection is not None:
       log.debug("Disconnect %s", self.connection)
       self.connection.removeListeners(self._listeners)
       self.connection = None
       self._listeners = None
-      import os
-      print "YOU FOUND THE NULL POINTER. 10 POINTS TO HUFFLEPUFF"
-      os._exit(1)
 
   def connect (self, connection):
     if self.dpid is None:
