@@ -764,7 +764,6 @@ class OpenFlow_01_Task (Task):
               # Note that instantiating a Connection object fires a
               # ConnectionUp event (after negotation has completed)
               self.max_connections -= 1
-              print "MAX_CONNS", self.max_connections 
               if self.max_connections == 0:
                 print "YOU FOUND THE MEMORY LEAK! TEN POINTS TO SLYTHERIN"
                 import os
