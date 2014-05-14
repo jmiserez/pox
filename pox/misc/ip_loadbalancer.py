@@ -35,7 +35,7 @@ import pox.openflow.libopenflow_01 as of
 import time
 import random
 
-FLOW_IDLE_TIMEOUT = 10
+FLOW_IDLE_TIMEOUT = 60 * 5
 FLOW_MEMORY_TIMEOUT = 60 * 5
 
 
@@ -138,7 +138,7 @@ class iplb (object):
         self.outstanding_probes.pop(ip, None)
         if ip in self.live_servers:
           self.log.warn("Server %s down", ip)
-          del self.live_servers[ip]
+          #del self.live_servers[ip]
 
     # Expire old flows
     c = len(self.memory)
