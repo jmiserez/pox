@@ -432,8 +432,14 @@ class l2_multi (EventMixin):
       return Discovery.Link(link[2],link[3], link[0],link[1])
 
     l = event.link
-    sw1 = switches[l.dpid1]
-    sw2 = switches[l.dpid2]
+    try:
+      sw1 = switches[l.dpid1]
+      sw2 = switches[l.dpid2]
+    except KeyError as e:
+      # Actually crash so that STS can easily detect it..
+      print "KeyError %s" % e
+      import os
+      os._exit(1)
 
     # Invalidate all flows and path info.
     # For link adds, this makes sure that if a new link leads to an
