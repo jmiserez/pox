@@ -124,6 +124,19 @@ class TableEntry (object):
         actions = self.actions
         )
 
+  def aggregate_stats (self, match, out_port=None):
+    mc_es = self.matching_entries(match=match, strict=False, out_port=out_port)
+    packet_count = 0
+    byte_count = 0
+    flow_count = 0
+    for entry in mc_es:
+      packet_count += entry.packet_count
+      byte_count += entry.byte_count
+      flow_count += 1
+    return ofp_aggregate_stats(packet_count=packet_count,
+                               byte_count=byte_count,
+                               flow_count=flow_count)
+
 class FlowTableModification (Event):
   def __init__(self, added=[], removed=[]):
     Event.__init__(self)
