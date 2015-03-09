@@ -573,7 +573,7 @@ class SoftwareSwitch(EventMixin):
         OFPAT_DEC_MPLS_TTL: dec_mpls_ttl,
     }
     for action in actions:
-      if action.type is ofp_action_resubmit:
+      if action.type is OFPAT_RESUBMIT:
         self.process_packet(packet, in_port)
         return
       if(action.type not in handler_map):
