@@ -110,45 +110,54 @@ class LoadBalancer(object):
 
     def install_replica1():
       if dpid == s1:
-        log.info("s1->rewrite(replica1)->s2")
+        log.info("on s1 installing s1->s2")
         msg = of.ofp_flow_mod()
-        msg.match = of.ofp_match.from_packet(packet)
+        msg.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
         msg.match.tp_src = None
         msg.match.tp_dst = None
-        msg.actions.append(of.ofp_action_nw_addr.set_dst(replica1))
+        #msg.actions.append(of.ofp_action_nw_addr.set_dst(replica1))
         msg.actions.append(of.ofp_action_output(port=2))
         self._send_out(s1,msg)
 
-        log.info("PacketOut on s1")
+        log.info("on s1 PacketOut on s1->s2")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
                                 action = of.ofp_action_output(port = 2))
         self._send_out(s1,msg)
 
         time.sleep(self.delay)
  
-        log.info("s2->replica1")
+        log.info("on s1 installing s2->replica1")
         msg2 = of.ofp_flow_mod()
-        msg2.match = of.ofp_match(in_port=2)
+        msg2.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
         #msg2.match.nw_dst = replica1
         msg2.actions.append(of.ofp_action_output(port=3))
         self._send_out(s2,msg2)
 
       elif dpid == s2:
-        log.info("s2->replica1")
+        log.info("on s2 installing s2->s1")
         msg2 = of.ofp_flow_mod()
-        msg2.match = of.ofp_match(in_port=2)
+        msg2.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
         #msg2.match.nw_dst = replica1
-        msg2.actions.append(of.ofp_action_output(port=3))
+        msg2.actions.append(of.ofp_action_output(port=of.OFPAT_OUTPUT))
         self._send_out(s2,msg2)
 
-        log.info("PacketOut on s2")
+        log.info("on 2 PacketOut on s2->s1")
+        msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
+                                action = of.ofp_action_output(port=of.OFPAT_OUTPUT))
+        self._send_out(s2,msg)
+
+      elif dpid == s3:
+        log.info("on s3 s3->replica2")
+        msg2 = of.ofp_flow_mod()
+        msg2.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
+        #msg2.match.nw_dst = replica1
+        msg2.actions.append(of.ofp_action_output(port=3))
+        self._send_out(s3,msg2)
+
+        log.info("on s3 PacketOut on s3->r2")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
                                 action = of.ofp_action_output(port = 3))
-        self._send_out(s2,msg)
-        
-#     elif dpid == s3:
-        #
-        # TODO what should we do here?
+        self._send_out(s3,msg)
 
       else:
           log.info("install_replica1: Unknown dpid %s %s" % (dpid, type(dpid)))
@@ -210,12 +219,16 @@ class LoadBalancer(object):
     if packet.type == ethernet.IP_TYPE:
       p = packet.next
       if p.dstip == vip:
+        # Always choose replica1 as the first choice
+        install_replica1()
+        """
         if self.last == "replica1":
           install_replica2()
           self.last = "replica2"
         else:
           install_replica1()
           self.last = "replica1"
+        """
       else:
         log.info("Packet not dest to server %s", p.dstip)
     else:
