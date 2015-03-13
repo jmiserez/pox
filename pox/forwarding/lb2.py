@@ -52,14 +52,10 @@ def print_msgout(dpid1,msg1,dpid2,msg2):
 class LoadBalancer(object):
   """
                            link used  
-                           by install_
-                           replica1
-                           when on s1,
-                           and install_
-                           replica2
-                           when on s2
+                           by install_replica1 when on s1,
+                           and install_replica2 when on s2
                            
-                           race can happen
+                           Race can happen
                            if rules are 
                            installed:
                            on s1: install_replica1
