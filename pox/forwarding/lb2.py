@@ -53,14 +53,28 @@ class LoadBalancer(object):
   """
                            link used  
                            by install_
+                           replica1
+                           when on s1,
+                           and install_
                            replica2
-                           when on s1
+                           when on s2
+                           
+                           race can happen
+                           if rules are 
+                           installed:
+                           on s1: install_replica1
+                           then on s2: install_replica2
+                           then on s1: install_replica1
+                           --------->
+                           <---------
+                           --------->
+                           etc. 
                                                            
                      h1--s1 ------- s2--replica1
                            \        /
-   link used by install_  < >   < > link used by install_replica2 when on s1
-   replica2 when on s2       \  /
-                              s3--replica2
+   link used by install_    \    < > link never used
+   replica2 when on s1       \  /
+       (case OK)              s3--replica2
     
   """
   def __init__(self):
