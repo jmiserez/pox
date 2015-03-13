@@ -25,6 +25,7 @@ from pox.lib.util import dpidToStr
 from pox.lib.addresses import IPAddr
 from pox.lib.addresses import EthAddr
 from pox.lib.packet.ethernet import ethernet
+import time
 
 log = core.getLogger()
 
@@ -36,12 +37,37 @@ s1 = "00-00-00-00-00-01"
 s2 = "00-00-00-00-00-02"
 s3 = "00-00-00-00-00-03"
 
+def encode_msg(msg):
+  import base64
+  if hasattr(msg, 'pack'):
+    msg = msg.pack()
+  return base64.b64encode(msg).replace("\n", "")
+
+def print_msgin(dpid,msg):
+  print "pox.forwarding.lb.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg)
+def print_msgout(dpid1,msg1,dpid2,msg2):
+  print "pox.forwarding.lb.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2)
+
+
 class LoadBalancer(object):
   def __init__(self):
     self.switches = {}
     core.openflow.addListeners(self)
     self.last = "r1"
+    self.delay = 2
 
+    self.in_dpid = None
+    self.in_msg = None
+    
+  def _send_out(self, dpid, msg):
+    if self.in_dpid is not None and self.in_msg is not None:
+      print_msgout(self.in_dpid, self.in_msg, dpid, encode_msg(msg))
+    self.switches[dpid].send(msg)
+    
+  def _read_in(self, dpid, msg):
+    self.in_dpid = dpid
+    self.in_msg = encode_msg(msg)
+    print_msgin(dpid, self.in_msg)
 
   def _handle_ConnectionUp(self, event):
     log.info("Connection %s from switch %s" % (event.connection, dpidToStr(event.dpid)))
@@ -59,19 +85,21 @@ class LoadBalancer(object):
         msg.match.tp_dst = None
         msg.actions.append(of.ofp_action_nw_addr.set_dst(r1))
         msg.actions.append(of.ofp_action_output(port=2))
-        self.switches[s1].send(msg)
+        self._send_out(s1,msg)
 
         log.info("PacketOut on s1")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
                                 action = of.ofp_action_output(port = 2))
-        self.switches[s1].send(msg)
+        self._send_out(s1,msg)
+
+        time.sleep(self.delay)
 
         log.info("s2->r1")
         msg2 = of.ofp_flow_mod()
         msg2.match = of.ofp_match(in_port=2)
         #msg2.match.nw_dst = r1
         msg2.actions.append(of.ofp_action_output(port=3))
-        self.switches[s2].send(msg2)
+        self._send_out(s2,msg2)
 
       elif dpid == s2:
         log.info("s2->r1")
@@ -79,14 +107,15 @@ class LoadBalancer(object):
         msg2.match = of.ofp_match(in_port=2)
         #msg2.match.nw_dst = r1
         msg2.actions.append(of.ofp_action_output(port=3))
-        self.switches[s2].send(msg2)
+        self._send_out(s2,msg2)
 
         log.info("PacketOut on s2")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
                                 action = of.ofp_action_output(port = 3))
-        self.switches[s2].send(msg)
+        self._send_out(s2,msg)
+
       else:
-          log.info("Unkown dpid %s %s" % (dpid, type(dpid)))
+          log.info("Unknown dpid %s %s" % (dpid, type(dpid)))
 
     def install_r2():
       if dpid == s1:
@@ -97,19 +126,21 @@ class LoadBalancer(object):
         msg.match.tp_dst = None
         msg.actions.append(of.ofp_action_nw_addr.set_dst(r2))
         msg.actions.append(of.ofp_action_output(port=1))
-        self.switches[s1].send(msg)
+        self._send_out(s1,msg)
 
         log.info("PacketOut on s1")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
                                 action = of.ofp_action_output(port = 1))
-        self.switches[s1].send(msg)
+        self._send_out(s1,msg)
+        
+        time.sleep(self.delay)
 
         log.info("s3->r2")
         msg2 = of.ofp_flow_mod()
         msg2.match = of.ofp_match(in_port=2)
         #msg2.match.nw_dst = r1
         msg2.actions.append(of.ofp_action_output(port=3))
-        self.switches[s3].send(msg2)
+        self._send_out(s3,msg2)
 
       elif dpid == s3:
         log.info("s3->r1")
@@ -117,17 +148,22 @@ class LoadBalancer(object):
         msg2.match = of.ofp_match(in_port=2)
         #msg2.match.nw_dst = r1
         msg2.actions.append(of.ofp_action_output(port=3))
-        self.switches[s3].send(msg2)
+        self._send_out(s3,msg2)
 
         log.info("PacketOut on s3")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
                                 action = of.ofp_action_output(port = 3))
-        self.switches[s3].send(msg)
-      else:
-          log.info("Unkown dpid %s %s" % (dpid, type(dpid)))
+        self._send_out(s3,msg)
 
-    packet = event.parsed
+      else:
+          log.info("Unknown dpid %s %s" % (dpid, type(dpid)))
+
     dpid = dpidToStr(event.dpid)
+    ofp_msg = event.ofp.pack()
+    self._read_in(dpid, ofp_msg)
+    packet = event.parsed
+
+    
     log.info("Handling packet in from switch %s on port %d src %s dst %s" % (dpid, event.port, packet.src, packet.dst))
     # Packets coming from the outside
 
@@ -145,16 +181,7 @@ class LoadBalancer(object):
     else:
       log.info("Unkown packet type")
 
-
-
-
-
     log.info("DONE")
-
-
-
-
-
 
 
 def launch ():
