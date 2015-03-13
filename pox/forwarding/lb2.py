@@ -51,6 +51,15 @@ def print_msgout(dpid1,msg1,dpid2,msg2):
 
 class LoadBalancer(object):
   """
+
+  physical topology
+                     h1-- 3-s1-2 --2-s2-3--replica1
+                            1        1
+                             \     /
+                              \   /
+                               2 1
+                               s3-3---replica2
+
                            link used  
                            by install_replica1 when on s1,
                            and install_replica2 when on s2
