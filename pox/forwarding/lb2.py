@@ -51,12 +51,16 @@ def print_msgout(dpid1,msg1,dpid2,msg2):
 
 class LoadBalancer(object):
   """
-   
-     h1--s1 ------- s2--replica1
-          \        /
-           \     /
-            \  /
-             s3--replica2
+                           link used  
+                           by install_
+                           replica2
+                           when on s1
+                                                           
+                     h1--s1 ------- s2--replica1
+                           \        /
+   link used by install_  < >   < > link used by install_replica2 when on s1
+   replica2 when on s2       \  /
+                              s3--replica2
     
   """
   def __init__(self):
