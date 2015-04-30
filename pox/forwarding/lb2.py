@@ -17,6 +17,7 @@
 
 """
 Turns your complex OpenFlow switches into stupid hubs.
+Run STS with command 'dpp2 1 "198.51.100.1"'
 """
 
 from pox.core import core
@@ -37,16 +38,16 @@ s1 = "00-00-00-00-00-01"
 s2 = "00-00-00-00-00-02"
 s3 = "00-00-00-00-00-03"
 
-def encode_msg(msg):
-  import base64
-  if hasattr(msg, 'pack'):
-    msg = msg.pack()
-  return base64.b64encode(msg).replace("\n", "")
-
-def print_msgin(dpid,msg):
-  print "pox.forwarding.lb.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg)
-def print_msgout(dpid1,msg1,dpid2,msg2):
-  print "pox.forwarding.lb.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2)
+# def encode_msg(msg):
+#   import base64
+#   if hasattr(msg, 'pack'):
+#     msg = msg.pack()
+#   return base64.b64encode(msg).replace("\n", "")
+# 
+# def print_msgin(dpid,msg):
+#   print "pox.forwarding.lb.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg)
+# def print_msgout(dpid1,msg1,dpid2,msg2):
+#   print "pox.forwarding.lb.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2)
 
 
 class LoadBalancer(object):
@@ -92,14 +93,15 @@ class LoadBalancer(object):
     self.in_msg = None
     
   def _send_out(self, dpid, msg):
-    if self.in_dpid is not None and self.in_msg is not None:
-      print_msgout(self.in_dpid, self.in_msg, dpid, encode_msg(msg))
+#     if self.in_dpid is not None and self.in_msg is not None:
+#       print_msgout(self.in_dpid, self.in_msg, dpid, encode_msg(msg))
     self.switches[dpid].send(msg)
     
   def _read_in(self, dpid, msg):
-    self.in_dpid = dpid
-    self.in_msg = encode_msg(msg)
-    print_msgin(dpid, self.in_msg)
+    pass
+#     self.in_dpid = dpid
+#     self.in_msg = encode_msg(msg)
+#     print_msgin(dpid, self.in_msg)
 
   def _handle_ConnectionUp(self, event):
     log.info("Connection %s from switch %s" % (event.connection, dpidToStr(event.dpid)))
@@ -108,49 +110,43 @@ class LoadBalancer(object):
 
   def _handle_PacketIn(self, event):
 
-    def install_replica1():
+    def install_replica1(packet):
       if dpid == s1:
         log.info("on s1 installing s1->s2")
         msg = of.ofp_flow_mod()
-        msg.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
-        msg.match.tp_src = None
-        msg.match.tp_dst = None
-        #msg.actions.append(of.ofp_action_nw_addr.set_dst(replica1))
+        msg.match = of.ofp_match.from_packet(packet)
         msg.actions.append(of.ofp_action_output(port=2))
         self._send_out(s1,msg)
+        
+        log.info("on s1 installing s2->replica1")
+        msg2 = of.ofp_flow_mod()
+        msg2.match = of.ofp_match.from_packet(packet)
+        msg2.actions.append(of.ofp_action_output(port=3))
+        self._send_out(s2,msg2)
+        
+        time.sleep(self.delay) # this prevents the race condition from occurring in the trace
 
         log.info("on s1 PacketOut on s1->s2")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
                                 action = of.ofp_action_output(port = 2))
         self._send_out(s1,msg)
 
-        time.sleep(self.delay)
- 
-        log.info("on s1 installing s2->replica1")
-        msg2 = of.ofp_flow_mod()
-        msg2.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
-        #msg2.match.nw_dst = replica1
-        msg2.actions.append(of.ofp_action_output(port=3))
-        self._send_out(s2,msg2)
-
       elif dpid == s2:
         log.info("on s2 installing s2->s1")
         msg2 = of.ofp_flow_mod()
-        msg2.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
-        #msg2.match.nw_dst = replica1
-        msg2.actions.append(of.ofp_action_output(port=of.OFPAT_OUTPUT))
+        msg2.match = of.ofp_match.from_packet(packet)
+        msg2.actions.append(of.ofp_action_output(port=of.OFPP_IN_PORT))
         self._send_out(s2,msg2)
 
         log.info("on 2 PacketOut on s2->s1")
         msg = of.ofp_packet_out(in_port = event.port, data = packet.pack(),
-                                action = of.ofp_action_output(port=of.OFPAT_OUTPUT))
+                                action = of.ofp_action_output(port=of.OFPP_IN_PORT))
         self._send_out(s2,msg)
 
       elif dpid == s3:
         log.info("on s3 s3->replica2")
         msg2 = of.ofp_flow_mod()
-        msg2.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
-        #msg2.match.nw_dst = replica1
+        msg2.match = of.ofp_match.from_packet(packet)
         msg2.actions.append(of.ofp_action_output(port=3))
         self._send_out(s3,msg2)
 
@@ -162,15 +158,13 @@ class LoadBalancer(object):
       else:
           log.info("install_replica1: Unknown dpid %s %s" % (dpid, type(dpid)))
 
-    def install_replica2():
+    def install_replica2(packet):
       if dpid == s1:
         log.info("s1->rewrite(replica2)->s3")
         msg = of.ofp_flow_mod()
         msg.match = of.ofp_match.from_packet(packet)
-        msg.match.tp_src = None
-        msg.match.tp_dst = None
         msg.actions.append(of.ofp_action_nw_addr.set_dst(replica2))
-        msg.areplica2ions.append(of.ofp_action_output(port=1))
+        msg.actions.append(of.ofp_action_output(port=1))
         self._send_out(s1,msg)
 
         log.info("PacketOut on s1")
@@ -220,7 +214,7 @@ class LoadBalancer(object):
       p = packet.next
       if p.dstip == vip:
         # Always choose replica1 as the first choice
-        install_replica1()
+        install_replica1(packet)
         """
         if self.last == "replica1":
           install_replica2()

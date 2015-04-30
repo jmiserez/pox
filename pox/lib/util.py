@@ -443,7 +443,7 @@ def connect_socket_with_backoff(address="localhost", port=None,
     server_info = (address, port)
     sock_type = socket.AF_INET
 
-  print >>sys.stderr, "connect_socket_with_backoff %s" % str(server_info)
+  print >>sys.stderr, "connect_socket_with_backoff %s\n" % str(server_info)
   def connect():
     sock = socket_ctor(sock_type, socket.SOCK_STREAM)
     sock.connect( server_info )

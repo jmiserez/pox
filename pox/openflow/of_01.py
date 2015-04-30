@@ -471,6 +471,8 @@ class Connection (EventMixin):
 
   # Globally unique identifier for the Connection instance
   ID = 0
+  
+  _hb_current_msgin = None
 
   def msg (self, m, *args):
     #print str(self), m
@@ -559,6 +561,17 @@ class Connection (EventMixin):
     except:
       pass
 
+  def base64_encode_raw(self, msg):
+    import base64
+    return base64.b64encode(msg).replace("\n", "")
+ 
+  def print_msgin(self, dpid, msg):
+    print "pox.openflow.of_01.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg)
+  def print_msgout(self, dpid1, msg1, dpid2, msg2):
+    print "pox.openflow.of_01.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2)
+  def ofp_type_to_string(self,t):
+    return of.ofp_type_rev_map.keys()[of.ofp_type_rev_map.values().index(t)]
+  
   def send (self, data):
     """
     Send raw data to the switch.
@@ -569,9 +582,30 @@ class Connection (EventMixin):
     library to it and get the expected result, for example.
     """
     if self.disconnected: return
+    
+    header_type = None
     if type(data) is not bytes:
+      if isinstance(data, of.ofp_header):
+        header_type = data.header_type
       if hasattr(data, 'pack'):
         data = data.pack()
+    else:
+      if hasattr(data, 'unpack'):
+        data = data.unpack()
+        if isinstance(data, of.ofp_header):
+          header_type = data.header_type
+        if hasattr(data, 'pack'):
+          data = data.pack()
+    
+#     print "send(): None" if header_type is None else "send(): " + str(self.ofp_type_to_string(header_type))
+    if header_type in (of.ofp_type_rev_map['OFPT_PACKET_OUT'], 
+                       of.ofp_type_rev_map['OFPT_FLOW_MOD'], 
+                       of.ofp_type_rev_map['OFPT_PORT_MOD'], 
+                       of.ofp_type_rev_map['OFPT_BARRIER_REQUEST']):
+      curr_msgin = Connection._hb_current_msgin
+      if curr_msgin is not None:
+        assert len(curr_msgin) == 2
+        self.print_msgout(curr_msgin[0], curr_msgin[1], self.dpid, self.base64_encode_raw(data))
 
     if deferredSender.sending:
       log.debug("deferred sender is sending!")
@@ -613,6 +647,17 @@ class Connection (EventMixin):
       ofp_type = ord(self.buf[1])
       packet_length = ord(self.buf[2]) << 8 | ord(self.buf[3])
       if packet_length > l: break
+      
+#       print "read(): " + str(self.ofp_type_to_string(ofp_type))
+      if ofp_type in (of.ofp_type_rev_map['OFPT_PACKET_IN'],
+                      of.ofp_type_rev_map['OFPT_FLOW_REMOVED'],
+                      of.ofp_type_rev_map['OFPT_BARRIER_REPLY']):
+        encoded_msgin = self.base64_encode_raw(self.buf[0:packet_length])
+        self.print_msgin(self.dpid, encoded_msgin)
+        Connection._hb_current_msgin = (self.dpid, encoded_msgin)
+      else:
+        _hb_current_msgin = None
+      
       msg = classes[ofp_type]()
       # msg.unpack implicitly only examines its own bytes, and not trailing
       # bytes

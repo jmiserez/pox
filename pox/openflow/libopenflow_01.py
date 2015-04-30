@@ -470,7 +470,7 @@ class ofp_match (object):
           # Not IP or ARP
           self.nw_src = IPAddr(0)
           self.nw_dst = IPAddr(0)
-          eelf.nw_proto = 0
+          self.nw_proto = 0
         self.nw_tos = 0
         self.tp_src = 0
         self.tp_dst = 0
@@ -799,6 +799,59 @@ class ofp_match (object):
     if(self_nw_dst[0] != None):
       other_nw_dst = other.get_nw_dst()
       if self_nw_dst[1] > other_nw_dst[1] or not IPAddr(other_nw_dst[0]).inNetwork((self_nw_dst[0], 32-self_nw_dst[1])): return False
+    return True
+  
+  def check_overlap(self, other, normalize=True):
+    
+    def norm (m):
+      m = m.clone()
+      m.wildcards = m._unwire_wildcards(m.wildcards)
+      m.wildcards = m._normalize_wildcards(m.wildcards)
+      return m
+    
+    if normalize:
+      m1 = norm(self)
+      m2 = norm(other)
+    else:
+      m1 = self
+      m2 = other
+      
+    def overlap_fail(m1, m2):
+      return (m1 is not None and m2 is not None) and (m1 != m2)
+    
+    def overlap_fail_nw(m1_nw, m2_nw):
+      m1_addr = m1_nw[0]
+      m1_netbits = m1_nw[1]
+      
+      m2_addr = m2_nw[0]
+      m2_netbits = m2_nw[1]
+      
+      if m1_addr is not None and m2_addr is not None:
+        netmask_bits = 32 - min(m1_netbits, m2_netbits)
+        m1_msbs = (m1_addr.toUnsigned() >> netmask_bits)
+        m2_msbs = (m2_addr.toUnsigned() >> netmask_bits)
+       
+        if m1_msbs != m2_msbs:
+          return True
+      return False
+    
+    # regular fields
+    if overlap_fail(m1.in_port, m2.in_port): return False
+    if overlap_fail(m1.dl_vlan, m2.dl_vlan): return False
+    if overlap_fail(m1.dl_src, m2.dl_src): return False
+    if overlap_fail(m1.dl_dst, m2.dl_dst): return False
+    if overlap_fail(m1.dl_type, m2.dl_type): return False
+    if overlap_fail(m1.nw_proto, m2.nw_proto): return False
+    if overlap_fail(m1.tp_src, m2.tp_src): return False
+    if overlap_fail(m1.tp_dst, m2.tp_dst): return False
+    if overlap_fail(m1.dl_vlan_pcp, m2.dl_vlan_pcp): return False
+    if overlap_fail(m1.nw_tos, m2.nw_tos): return False
+    
+    
+    if overlap_fail_nw(m1.get_nw_dst(), m2.get_nw_dst()):
+      return False
+    if overlap_fail_nw(m1.get_nw_src(), m2.get_nw_src()):
+      return False
     return True
 
   def __eq__ (self, other):

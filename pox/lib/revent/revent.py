@@ -229,13 +229,15 @@ class EventMixin (object):
     """
     #TODO: this should really keep subsequent events executing and print the
     #      specific handler that failed...
-    try:
-      return self.raiseEvent(event, *args, **kw)
-    except:
-      if handleEventException is not None:
-        import sys
-        handleEventException(self, event, args, kw, sys.exc_info())
-    return None
+    return self.raiseEvent(event, *args, **kw)
+    # TODO(jm): reenable exception catching
+#     try:
+#       return self.raiseEvent(event, *args, **kw)
+#     except:
+#       if handleEventException is not None:
+#         import sys
+#         handleEventException(self, event, args, kw, sys.exc_info())
+#     return None
 
   def raiseEvent (self, event, *args, **kw):
     """
