@@ -256,8 +256,12 @@ class LoadBalancer(object):
           log.info("Installed replica 1")
           self.next_replica = 2
         elif self.next_replica == 2:
-#           install_replica2(packet, dpid, packet_in)
-          log.info("Installed replica 2")
+          # For verifying the scenario we don't actually need to install the 2nd 
+          #             replica. In fact, this breaks the scenario sometimes.
+          # TODO(jm): Find a way to add this without breaking everything.
+          #install_replica2(packet, dpid, packet_in)
+          #log.info("Installed replica 2")
+          log.info("Pass")
           self.next_replica = 1
       else:
         log.info("Packet not headed for VIP address, but to %s", dst_ip)
