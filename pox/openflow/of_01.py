@@ -566,9 +566,11 @@ class Connection (EventMixin):
     return base64.b64encode(msg).replace("\n", "")
  
   def print_msgin(self, dpid, msg):
-    print "pox.openflow.of_01.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg)
+    #print "pox.openflow.of_01.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg)
+    log.info("pox.openflow.of_01.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg))
   def print_msgout(self, dpid1, msg1, dpid2, msg2):
-    print "pox.openflow.of_01.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2)
+    #print "pox.openflow.of_01.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2)
+    log.info("pox.openflow.of_01.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2))
   def ofp_type_to_string(self,t):
     return of.ofp_type_rev_map.keys()[of.ofp_type_rev_map.values().index(t)]
   
