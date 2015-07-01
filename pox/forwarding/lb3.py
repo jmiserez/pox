@@ -116,7 +116,7 @@ class LoadBalancer(object):
     msg = of.ofp_flow_mod()
 #     msg.match = of.ofp_match.from_packet(packet)
 #     msg.match = of.ofp_match(nw_dst = vip)
-    msg.match = of.ofp_match(nw_dst=vip)
+    msg.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
     msg.match.tp_src = None
     msg.match.tp_dst = None
     msg.priority = 10
@@ -126,7 +126,7 @@ class LoadBalancer(object):
     msg2 = of.ofp_flow_mod()
 #     msg.match = of.ofp_match.from_packet(packet)
 #     msg.match = of.ofp_match(nw_dst = vip)
-    msg2.match = of.ofp_match(nw_dst=vip)
+    msg2.match = of.ofp_match(dl_type=ethernet.IP_TYPE, nw_dst=vip)
     msg2.match.tp_src = None
     msg2.match.tp_dst = None
     msg2.match.in_port = out_port
