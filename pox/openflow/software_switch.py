@@ -163,6 +163,9 @@ class SoftwareSwitch(EventMixin):
   def _receive_hello(self, ofp):
     self.log.debug("Receive hello %s", self.name)
     # How does the OpenFlow protocol prevent an infinite loop of Hello messages?
+    # NOTE(jm): -> There is no need to prevent infinite loops as the idea is to send a
+    #              a Hello message once at startup, not to reply to received messages.
+    # TODO(jm): Send message only once at startup
     self.send_hello()
 
   def _receive_echo(self, ofp):
