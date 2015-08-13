@@ -143,7 +143,7 @@ class TrafficEngineering(object):
       self.install_rule(s6, p_top, prio, host_dst=h1)
       
   def install_path_red(self):
-      log.info("install_path_red: h1-4-5-2-6-h6")
+      log.info("install_path_red: h1-1-4-5-2-6-h6")
       prio = 20
       self.install_rule(s1, p_bottom, prio, host_dst=h6)
       self.install_rule(s4, p_right, prio, host_dst=h6)
