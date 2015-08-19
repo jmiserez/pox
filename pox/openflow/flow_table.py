@@ -94,6 +94,7 @@ class TableEntry (object):
     self.counters["last_touched"] = now
 
   def is_expired(self, now=None):
+    #TODO(jm): split into two, for idle/hard. (To implement expiry reason)
     """" return whether this flow entry is expired due to its idle timeout or hard timeout"""
     if now==None: now = time.time()
     return (self.hard_timeout > 0 and now - self.counters["created"] > self.hard_timeout) or (self.idle_timeout > 0 and now - self.counters["last_touched"] > self.idle_timeout)
