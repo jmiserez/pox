@@ -152,7 +152,7 @@ class LearningSwitch (EventMixin):
         port = self.macToPort[packet.dst]
         if port == event.port: # 5
           # 5a
-          log.warning("DPID %s: Same port for packet from %s -> %s.  Drop.",
+          log.warning("DPID %s: Same port for packet from %s -> %s.%i.  Drop.",
                       dpidToStr(event.dpid), packet.src, packet.dst, port)
           drop(10)
           return
