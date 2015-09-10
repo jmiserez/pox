@@ -175,6 +175,12 @@ class FSwitch(EventMixin):
     msg.priority = priority
     self.connection.send(msg)
 
+  def deny_service(self, ip, priority=1000):
+    msg = of.ofp_flow_mod()
+    msg.match = of.ofp_match(nw_src=ip)
+    msg.priority = priority
+    self.connection.send(msg)
+
   def allow_all(self, priority=100):
     # To internet Rules
     internet_msg = of.ofp_flow_mod()
@@ -226,44 +232,14 @@ class F2Switch(FSwitch):
     self.log.debug("Initializing F2 Switch")
 
   def install_v1(self):
-    # To internet Rules
-    internet_msg = of.ofp_flow_mod()
-    internet_msg.match = of.ofp_match(in_port=fs_ports[internal])
-    internet_msg.actions.append(of.ofp_action_output(port=fs_ports[internet]))
-    internet_msg.priority = 100
-
-    # To internal Rules
-    internal_msg = of.ofp_flow_mod()
-    internal_msg.match = of.ofp_match(in_port=fs_ports[internet])
-    internal_msg.actions.append(of.ofp_action_output(port=fs_ports[internal]))
-    internal_msg.priority = 100
-
-    self.connection.send(internal_msg)
-    self.connection.send(internet_msg)
+    self.log.info("Installing v2")
+    self.allow_all()
 
   def install_v2(self):
     self.log.info("Installing v2")
     # Service1 Rules
-    s1_msg = of.ofp_flow_mod()
-    s1_msg.match = of.ofp_match(nw_src=host_ips[service1])
-    s1_msg.actions.append(of.ofp_action_output(port=fs_ports[monitor]))
-    s1_msg.priority = 1000
-
-    # To internet Rules
-    internet_msg = of.ofp_flow_mod()
-    internet_msg.match = of.ofp_match(in_port=fs_ports[internal])
-    internet_msg.actions.append(of.ofp_action_output(port=fs_ports[internet]))
-    internet_msg.priority = 100
-
-    # To internal Rules
-    internal_msg = of.ofp_flow_mod()
-    internal_msg.match = of.ofp_match(in_port=fs_ports[internet])
-    internal_msg.actions.append(of.ofp_action_output(port=fs_ports[internal]))
-    internal_msg.priority = 100
-
-    self.connection.send(s1_msg)
-    self.connection.send(internal_msg)
-    self.connection.send(internet_msg)
+    self.redirect_serivce(host_ips[service1], fs_ports[monitor])
+    self.allow_all()
 
   def _handle_PacketIn (self, event):
     """
@@ -282,30 +258,16 @@ class F3Switch(FSwitch):
 
   def install_v1(self):
     self.log.info("Installing v1")
-    # To internet Rules
-    internet_msg = of.ofp_flow_mod()
-    internet_msg.match = of.ofp_match(in_port=fs_ports[internal])
-    internet_msg.actions.append(of.ofp_action_output(port=fs_ports[internet]))
-    internet_msg.priority = 100
-
-    # To internal Rules
-    internal_msg = of.ofp_flow_mod()
-    internal_msg.match = of.ofp_match(in_port=fs_ports[internet])
-    internal_msg.actions.append(of.ofp_action_output(port=fs_ports[internal]))
-    internal_msg.priority = 100
-
-    self.connection.send(internal_msg)
-    self.connection.send(internet_msg)
+    self.allow_all()
 
   def install_v2(self):
     self.log.info("Installing v2")
-    self.install_v1()
+    self.allow_all()
 
   def _handle_PacketIn (self, event):
     """
     Handles packet in messages from the switch to implement above algorithm.
     """
-
     packet = event.parse()
     self.log.info("XXX Ignoring packet in at F3 Switch: %s", str(packet))
 
@@ -364,12 +326,34 @@ class Main(EventMixin):
 
   def inconsistent_update(self):
     self.log.info("XXX Inconsistent Update")
-    for name, sw in self.handlers.iteritems():
-      sw.install_v2()
+    #self.handlers[internal].redirect_traffic(unknown, internal_ports[f1])
+    self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
+    self.handlers[internal].redirect_traffic(faculty, internal_ports[f3])
+    #self.handlers[internal].redirect_traffic(student, internal_ports[f3])
+    self.handlers[f2].redirect_serivce(host_ips[service1], fs_ports[monitor])
+
+  def consistent_udpate(self):
+    self.log.info("XXX Consistent Update")
+    # From the paper
+    # 1- Update I to forward S traffic to F3, while continuing to
+    #    forward U and G traffic to F1 and F traffic to F3.
+    self.handlers[internal].redirect_traffic(student, internal_ports[f3])
+    # 2- Wait until in-flight packets have been processed by F2.
+    # TODO: add wait
+    secs = 5
+    self.log.info("Sleeping for %d secs", secs)
+    time.sleep(secs)
+    self.log.info("Woke up after %d secs", secs)
+    # 3- Update F2 to deny SSH packets.
+    #self.handlers[f2].deny_service(host_ips[service1])
+    self.handlers[f2].redirect_serivce(host_ips[service1], fs_ports[monitor])
+    # 4- Update I to forward G traffic to F2, while continuing to
+    #    forward U traffic to F1 and S and F traffic to F3.
+    self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
 
   def update_version(self):
     self.log.info("XXX Update version triggered")
-    self.inconsistent_update()
+    self.consistent_udpate()
 
   def _handle_ConnectionUp (self, event):
     log.debug("Connection %s", event.connection)
