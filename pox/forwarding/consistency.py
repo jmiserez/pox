@@ -134,6 +134,7 @@ class InternalSwitch(EventMixin):
     msg.match = of.ofp_match(nw_src=host_ips[src])
     msg.actions.append(of.ofp_action_output(port=port))
     msg.priority = priority
+    self.log.info("Redirect Traffic to src='%s' to port: %d" % (src, port))
     self.connection.send(msg)
 
   def install_v1(self):
@@ -173,6 +174,7 @@ class FSwitch(EventMixin):
     msg.match = of.ofp_match(nw_src=ip)
     msg.actions.append(of.ofp_action_output(port=port))
     msg.priority = priority
+    self.log.info("Redirect Service to src='%s' to port: %d" % (ip, port))
     self.connection.send(msg)
 
   def deny_service(self, ip, priority=1000):
@@ -328,7 +330,7 @@ class Main(EventMixin):
     self.log.info("XXX Inconsistent Update")
     #self.handlers[internal].redirect_traffic(unknown, internal_ports[f1])
     self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
-    self.handlers[internal].redirect_traffic(faculty, internal_ports[f3])
+    self.handlers[internal].redirect_traffic(student, internal_ports[f3])
     #self.handlers[internal].redirect_traffic(student, internal_ports[f3])
     self.handlers[f2].redirect_serivce(host_ips[service1], fs_ports[monitor])
 
@@ -353,7 +355,7 @@ class Main(EventMixin):
 
   def update_version(self):
     self.log.info("XXX Update version triggered")
-    self.consistent_udpate()
+    self.inconsistent_update()
 
   def _handle_ConnectionUp (self, event):
     log.debug("Connection %s", event.connection)
