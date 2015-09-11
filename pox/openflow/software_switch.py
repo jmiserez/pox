@@ -192,6 +192,7 @@ class SoftwareSwitch(EventMixin):
     self.log.debug("Flow mod %s: %s", self.name, ofp.show())
     self.table.process_flow_mod(ofp)
     if(ofp.buffer_id > 0):
+      #TODO(jm): Change this, so that the buffer is *only* read when the packet is *actually* used. Otherwise we get spurious pid_ins in hb_logger.py:handle_switch_buf_get due to the TraceSwitchBufferGet events that are triggered.
       self._process_actions_for_packet_from_buffer(ofp.actions, ofp.buffer_id)
 
   def _receive_packet_out(self, packet_out):

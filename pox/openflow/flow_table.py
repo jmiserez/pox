@@ -274,6 +274,7 @@ class SwitchFlowTable(FlowTable):
         return ("modified", modified)
 
     elif flow_mod.command == OFPFC_DELETE or flow_mod.command == OFPFC_DELETE_STRICT:
+      #TODO(jm): Implement expiry reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
       is_strict = (flow_mod.command == OFPFC_DELETE_STRICT)
       return ("removed", self.remove_matching_entries(flow_mod.match, flow_mod.priority, is_strict))
     else:
