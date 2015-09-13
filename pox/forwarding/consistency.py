@@ -131,10 +131,10 @@ class InternalSwitch(EventMixin):
 
   def redirect_traffic(self, src, port, priority=100):
     msg = of.ofp_flow_mod()
-    msg.match = of.ofp_match(nw_src=host_ips[src])
+    msg.match = of.ofp_match(dl_src=src)
     msg.actions.append(of.ofp_action_output(port=port))
     msg.priority = priority
-    self.log.info("Redirect Traffic to src='%s' to port: %d" % (src, port))
+    self.log.info("Redirect Traffic from src='%s' to port: %d" % (src, port))
     self.connection.send(msg)
 
   def install_v1(self):
