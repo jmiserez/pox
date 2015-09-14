@@ -12,8 +12,10 @@ import time
 log = core.getLogger()
 
 
-h1 = EthAddr("00:00:00:00:00:01")
-h2 = EthAddr("00:00:00:00:00:02")
+h1 = EthAddr("12:34:56:78:01:02")
+h2 = EthAddr("12:34:56:78:02:02")
+
+hosts = [h1, h2]
 
 s1 = "00-00-00-00-00-01"
 s2 = "00-00-00-00-00-02"
@@ -21,8 +23,8 @@ s2 = "00-00-00-00-00-02"
 
 hosts_map = {}
 hosts_map[s1] = {}
-hosts_map[s1][h1] = 1
-hosts_map[s1][h2] = 2
+hosts_map[s1][h1] = 2
+hosts_map[s1][h2] = 1
 hosts_map[s2] = {}
 hosts_map[s2][h1] = 1
 hosts_map[s2][h2] = 2
@@ -38,6 +40,29 @@ class S1(EventMixin):
     self.log = core.getLogger(self.__class__.__name__)
     self.log.debug("Initializing %s", self.__class__.__name__)
 
+  def get_dst_h1(self, event):
+    packet = event.parse()
+    s1_msg = of.ofp_flow_mod()
+    #s1_msg.match = of.ofp_match.from_packet(packet)
+    s1_msg.match = of.ofp_match(dl_dst=h1)
+    s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][h1]))
+    s1_msg.buffer_id = event.ofp.buffer_id
+    return s1_msg
+
+  def get_dst_h2(self, event):
+    packet = event.parse()
+    s1_msg = of.ofp_flow_mod()
+    #s1_msg.match = of.ofp_match.from_packet(packet)
+    s1_msg.match = of.ofp_match(dl_dst=h2)
+    s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][h2]))
+    s1_msg.buffer_id = event.ofp.buffer_id
+
+    s2_msg = of.ofp_flow_mod()
+    #s2_msg.match = of.ofp_match.from_packet(packet)
+    s2_msg.match = of.ofp_match(dl_dst=h2)
+    s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][h2]))
+    return s1_msg, s2_msg
+
   def inconsistent_PacketIn(self, event):
     """
     Inconsistent PacketIn handler update the first switch and push the packet
@@ -47,17 +72,13 @@ class S1(EventMixin):
     packet = event.parse()
     src = packet.src
     dst = packet.dst
-    self.log.info("XXX Inconsistent Packet in %s->%s", src, dst)
+    self.log.info("XXX Inconsistent Packet in %s->%s, in_port: %d", src, dst, event.port)
+    if dst not in hosts:
+      self.log.warn("XXXX Unkown dst in %s->%s, in_port: %d", src, dst, event.port)
+      return
     if dst == h2:
       # I'm the first switch in the path
-      s1_msg = of.ofp_flow_mod()
-      s1_msg.match = of.ofp_match.from_packet(packet)
-      s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][dst]))
-      s1_msg.buffer_id = event.ofp.buffer_id
-
-      s2_msg = of.ofp_flow_mod()
-      s2_msg.match = of.ofp_match.from_packet(packet)
-      s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][dst]))
+      s1_msg, s2_msg = self.get_dst_h2(event)
 
       self.s1_conn.send(s1_msg)
       self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
@@ -65,10 +86,7 @@ class S1(EventMixin):
       self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
     elif dst == h1:
       # I'm the last switch in the path
-      s1_msg = of.ofp_flow_mod()
-      s1_msg.match = of.ofp_match.from_packet(packet)
-      s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][dst]))
-      s1_msg.buffer_id = event.ofp.buffer_id
+      s1_msg = self.get_dst_h1(event)
       self.log.info("XXX (1 hop) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
       self.s1_conn.send(s1_msg)
 
@@ -76,29 +94,22 @@ class S1(EventMixin):
     packet = event.parse()
     src = packet.src
     dst = packet.dst
-    self.log.info("XXX Consistent Packet in %s->%s", src, dst)
+    self.log.info("XXX Consistent Packet in %s->%s, in_port: %d", src, dst, event.port)
+    if dst not in hosts:
+      self.log.warn("XXXX Unkown dst in %s->%s, in_port: %d", src, dst, event.port)
+      return
     if dst == h2:
       # I'm the first switch in the path
-      s1_msg = of.ofp_flow_mod()
-      s1_msg.match = of.ofp_match.from_packet(packet)
-      s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][dst]))
-      s1_msg.buffer_id = event.ofp.buffer_id
-
-      s2_msg = of.ofp_flow_mod()
-      s2_msg.match = of.ofp_match.from_packet(packet)
-      s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][dst]))
-      #s2_msg.buffer_id = event.ofp.buffer_id
+      s1_msg, s2_msg = self.get_dst_h2(event)
 
       self.s2_conn.send(s2_msg)
       self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
+      time.sleep(0.5)
       self.s1_conn.send(s1_msg)
       self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
     elif dst == h1:
       # I'm the last switch in the path
-      s1_msg = of.ofp_flow_mod()
-      s1_msg.match = of.ofp_match.from_packet(packet)
-      s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][dst]))
-      s1_msg.buffer_id = event.ofp.buffer_id
+      s1_msg = self.get_dst_h1(event)
       self.log.info("XXX (1 hop) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
       self.s1_conn.send(s1_msg)
 
@@ -121,22 +132,40 @@ class S2(EventMixin):
     self.log = core.getLogger(self.__class__.__name__)
     self.log.debug("Initializing %s", self.__class__.__name__)
 
+  def get_dst_h1(self, event):
+    packet = event.parse()
+    s1_msg = of.ofp_flow_mod()
+    #s1_msg.match = of.ofp_match.from_packet(packet)
+    s1_msg.match = of.ofp_match(dl_dst=h1)
+    s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][h1]))
+
+    s2_msg = of.ofp_flow_mod()
+    #s2_msg.match = of.ofp_match.from_packet(packet)
+    s2_msg.match = of.ofp_match(dl_dst=h1)
+    s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][h1]))
+    s2_msg.buffer_id = event.ofp.buffer_id
+    return s1_msg, s2_msg
+
+  def get_dst_h2(self, event):
+    packet = event.parse()
+    s2_msg = of.ofp_flow_mod()
+    #s2_msg.match = of.ofp_match.from_packet(packet)
+    s2_msg.match = of.ofp_match(dl_dst=h2)
+    s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][h2]))
+    s2_msg.buffer_id = event.ofp.buffer_id
+    return s2_msg
+
   def inconsistent_PacketIn(self, event):
     packet = event.parse()
     src = packet.src
     dst = packet.dst
-    self.log.info("XXX Inconsistent Packet in %s->%s", src, dst)
+    self.log.info("XXX Inconsistent Packet in %s->%s, in_port: %d", src, dst, event.port)
+    if dst not in hosts:
+      self.log.warn("XXXX Unkown dst in %s->%s, in_port: %d", src, dst, event.port)
+      return
     if dst == h1:
       # I'm the first switch in the path
-      s1_msg = of.ofp_flow_mod()
-      s1_msg.match = of.ofp_match.from_packet(packet)
-      s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][dst]))
-      #s1_msg.buffer_id = event.ofp.buffer_id
-
-      s2_msg = of.ofp_flow_mod()
-      s2_msg.match = of.ofp_match.from_packet(packet)
-      s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][dst]))
-      s2_msg.buffer_id = event.ofp.buffer_id
+      s1_msg, s2_msg = self.get_dst_h1(event)
 
       self.s2_conn.send(s2_msg)
       self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
@@ -145,10 +174,7 @@ class S2(EventMixin):
       self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
     elif dst == h2:
       # I'm the last switch in the path
-      s2_msg = of.ofp_flow_mod()
-      s2_msg.match = of.ofp_match.from_packet(packet)
-      s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][dst]))
-      s2_msg.buffer_id = event.ofp.buffer_id
+      s2_msg = self.get_dst_h2(event)
       self.s2_conn.send(s2_msg)
       self.log.info("XXX (1 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
 
@@ -156,18 +182,13 @@ class S2(EventMixin):
     packet = event.parse()
     src = packet.src
     dst = packet.dst
-    self.log.info("XXX Consistent Packet in %s->%s", src, dst)
+    self.log.info("XXX Consistent Packet in %s->%s, in_port: %d", src, dst, event.port)
+    if dst not in hosts:
+      self.log.warn("XXXX Unkown dst in %s->%s, in_port: %d", src, dst, event.port)
+      return
     if dst == h1:
       # I'm the first switch in the path
-      s1_msg = of.ofp_flow_mod()
-      s1_msg.match = of.ofp_match.from_packet(packet)
-      s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][dst]))
-      #s1_msg.buffer_id = event.ofp.buffer_id
-
-      s2_msg = of.ofp_flow_mod()
-      s2_msg.match = of.ofp_match.from_packet(packet)
-      s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][dst]))
-      s2_msg.buffer_id = event.ofp.buffer_id
+      s1_msg, s2_msg = self.get_dst_h1(event)
 
       self.s1_conn.send(s1_msg)
       self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
@@ -175,13 +196,9 @@ class S2(EventMixin):
       self.s2_conn.send(s2_msg)
       self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
 
-
     elif dst == h2:
       # I'm the last switch in the path
-      s2_msg = of.ofp_flow_mod()
-      s2_msg.match = of.ofp_match.from_packet(packet)
-      s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][dst]))
-      s2_msg.buffer_id = event.ofp.buffer_id
+      s2_msg = self.get_dst_h2(event)
       self.s2_conn.send(s2_msg)
       self.log.info("XXX (1 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
 
