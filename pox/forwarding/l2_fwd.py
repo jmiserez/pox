@@ -7,6 +7,7 @@ from pox.lib.addresses import EthAddr
 from pox.lib.addresses import IPAddr
 from pox.lib.recoco.recoco import Timer
 import time
+from itertools import count
 
 
 log = core.getLogger()
@@ -29,16 +30,22 @@ hosts_map[s2] = {}
 hosts_map[s2][h1] = 1
 hosts_map[s2][h2] = 2
 
+XID = count(1000)
+
+waiting_msgs = {} # (dpid, xid)->(conn, msg)
+
 
 class S1(EventMixin):
-  def __init__ (self, connection, consistent=False):
+  def __init__ (self, connection, consistent=False, use_barrier=True):
     self.s1_conn = connection
     self.s2_conn = None
     self.consistent = consistent
+    self.use_barrier = use_barrier
+    self.dpid = s1
 
     self.listenTo(connection)
     self.log = core.getLogger(self.__class__.__name__)
-    self.log.debug("Initializing %s", self.__class__.__name__)
+    self.log.debug("Initialized %s", self.__class__.__name__)
 
   def get_dst_h1(self, event):
     packet = event.parse()
@@ -82,8 +89,15 @@ class S1(EventMixin):
 
       self.s1_conn.send(s1_msg)
       self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
-      self.s2_conn.send(s2_msg)
-      self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
+      if self.use_barrier:
+        barrier_msg = of.ofp_barrier_request()
+        barrier_msg.xid = XID.next()
+        self.log.info("XXX Requesting Barrier on s1 before updating s2, xid=%s", barrier_msg.xid)
+        waiting_msgs[(s1, barrier_msg.xid)] = (self.s2_conn, s2_msg)
+        self.s1_conn.send(barrier_msg)
+      else:
+        self.s2_conn.send(s2_msg)
+        self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
     elif dst == h1:
       # I'm the last switch in the path
       s1_msg = self.get_dst_h1(event)
@@ -104,9 +118,17 @@ class S1(EventMixin):
 
       self.s2_conn.send(s2_msg)
       self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
-      time.sleep(0.5)
-      self.s1_conn.send(s1_msg)
-      self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
+      if self.use_barrier:
+        barrier_msg = of.ofp_barrier_request()
+        barrier_msg.xid = XID.next()
+        self.log.info("XXX Requesting Barrier on s2 before updating s1, xid=%s", barrier_msg.xid)
+        waiting_msgs[(s2, barrier_msg.xid)] = (self.s1_conn, s1_msg)
+        self.s2_conn.send(barrier_msg)
+
+      else:
+        time.sleep(0.5)
+        self.s1_conn.send(s1_msg)
+        self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
     elif dst == h1:
       # I'm the last switch in the path
       s1_msg = self.get_dst_h1(event)
@@ -114,23 +136,35 @@ class S1(EventMixin):
       self.s1_conn.send(s1_msg)
 
   def _handle_PacketIn (self, event):
+    self.log.info("XXXX PacketIN")
     if self.consistent:
       self.consistent_PacketIn(event)
     else:
       self.inconsistent_PacketIn(event)
 
+  def _handle_BarrierIn(self, event):
+    self.log.info("BARRIER REPLY: xid=%s", event.xid)
+    t = (self.dpid, event.xid)
+    if t in waiting_msgs:
+      conn, msg = waiting_msgs[t]
+      self.log.info("XXX (2 hops) sending after barrier")
+      conn.send(msg)
+    else:
+      self.log.error("Received a barrier reply with unknown xid: %s , current xids: %s", event.xid, str(waiting_msgs.keys()))
 
 
 class S2(EventMixin):
-  def __init__ (self, connection, consistent=False):
+  def __init__ (self, connection, consistent=False, use_barrier=True):
     self.s1_conn = None
     self.s2_conn = connection
     self.consistent = consistent
+    self.use_barrier = use_barrier
+    self.dpid = s2
 
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
     self.log = core.getLogger(self.__class__.__name__)
-    self.log.debug("Initializing %s", self.__class__.__name__)
+    self.log.debug("Initialized %s", self.__class__.__name__)
 
   def get_dst_h1(self, event):
     packet = event.parse()
@@ -169,9 +203,15 @@ class S2(EventMixin):
 
       self.s2_conn.send(s2_msg)
       self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
-      time.sleep(0.1)
-      self.s1_conn.send(s1_msg)
-      self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
+      if self.use_barrier:
+        barrier_msg = of.ofp_barrier_request()
+        barrier_msg.xid = XID.next()
+        self.log.info("XXX Requesting Barrier on s2 before updating s1, xid=%s", barrier_msg.xid)
+        waiting_msgs[(s2, barrier_msg.xid)] = (self.s1_conn, s1_msg)
+        self.s2_conn.send(barrier_msg)
+      else:
+        self.s1_conn.send(s1_msg)
+        self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
     elif dst == h2:
       # I'm the last switch in the path
       s2_msg = self.get_dst_h2(event)
@@ -192,9 +232,16 @@ class S2(EventMixin):
 
       self.s1_conn.send(s1_msg)
       self.log.info("XXX (2 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
-      time.sleep(0.1)
-      self.s2_conn.send(s2_msg)
-      self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
+      if self.use_barrier:
+        barrier_msg = of.ofp_barrier_request()
+        barrier_msg.xid = XID.next()
+        self.log.info("XXX Requesting Barrier on s1 before updating s2, xid=%s", barrier_msg.xid)
+        waiting_msgs[(s1, barrier_msg.xid)] = (self.s2_conn, s2_msg)
+        self.s1_conn.send(barrier_msg)
+      else:
+        time.sleep(0.1)
+        self.s2_conn.send(s2_msg)
+        self.log.info("XXX (2 hops) Installed  s1 %s->%s out on: %d", src, dst, hosts_map[s1][dst])
 
     elif dst == h2:
       # I'm the last switch in the path
@@ -203,10 +250,21 @@ class S2(EventMixin):
       self.log.info("XXX (1 hops) Installed  s2 %s->%s out on: %d", src, dst, hosts_map[s2][dst])
 
   def _handle_PacketIn (self, event):
+    self.log.info("XXXX PacketIN")
     if self.consistent:
       self.consistent_PacketIn(event)
     else:
       self.inconsistent_PacketIn(event)
+
+  def _handle_BarrierIn(self, event):
+    self.log.info("BARRIER REPLY%s", event.xid)
+    t = (self.dpid, event.xid)
+    if t in waiting_msgs:
+      conn, msg = waiting_msgs[t]
+      self.log.info("XXX (2 hops) sending after barrier")
+      conn.send(msg)
+    else:
+      self.log.error("Received a barrier reply with unknown xid: %s , current xids: %s", event.xid, str(waiting_msgs.keys()))
 
 
 class Main(EventMixin):
@@ -232,5 +290,6 @@ class Main(EventMixin):
       self.handlers[s2].s1_conn = self.handlers[s1].s1_conn
 
 
-def launch(consistent=False):
-  core.registerNew(Main, consistent=str_to_bool(consistent))
+def launch(consistent=False, use_barrier=True):
+  core.registerNew(Main, consistent=str_to_bool(consistent),
+                   use_barrier=str_to_bool(use_barrier))
