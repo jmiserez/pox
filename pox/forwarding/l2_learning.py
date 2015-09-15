@@ -165,6 +165,7 @@ class LearningSwitch (EventMixin):
         msg.hard_timeout = 30
         msg.actions.append(of.ofp_action_output(port = port))
         msg.buffer_id = event.ofp.buffer_id # 6a
+        self.connection.send(msg)
 
 class l2_learning (EventMixin):
   """
