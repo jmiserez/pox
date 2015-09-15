@@ -271,19 +271,20 @@ class Main(EventMixin):
   """
   Waits for OpenFlow switches to connect and makes them learning switches.
   """
-  def __init__ (self, consistent=False):
+  def __init__ (self, consistent=False, use_barrier=True):
     self.listenTo(core.openflow)
     self.log = core.getLogger("Main")
     self.handlers = {}
     self.consistent = consistent
+    self.use_barrier = use_barrier
 
   def _handle_ConnectionUp (self, event):
     log.debug("Connection %s", event.connection)
     dpid = dpidToStr(event.dpid)
     if dpid == s1:
-      self.handlers[s1] = S1(event.connection, self.consistent)
+      self.handlers[s1] = S1(event.connection, self.consistent, self.use_barrier)
     elif dpid == s2:
-      self.handlers[s2] = S2(event.connection, self.consistent)
+      self.handlers[s2] = S2(event.connection, self.consistent, self.use_barrier)
 
     if s1 in self.handlers and s2 in self.handlers:
       self.handlers[s1].s2_conn = self.handlers[s2].s2_conn
