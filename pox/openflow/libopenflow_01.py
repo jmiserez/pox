@@ -1943,7 +1943,7 @@ class ofp_flow_mod (ofp_header):
     if self.idle_timeout !=  other.idle_timeout: return False
     if self.hard_timeout !=  other.hard_timeout: return False
     if self.priority !=  other.priority: return False
-    if self.buffer_id !=  other.buffer_id: return False
+    if (self.buffer_id & 0xffffffff) != (other.buffer_id & 0xffffffff): return False
     if self.out_port !=  other.out_port: return False
     if self.flags !=  other.flags: return False
     if self.actions !=  other.actions: return False
@@ -3018,7 +3018,7 @@ class ofp_packet_out (ofp_header):
   def __eq__ (self, other):
     if type(self) != type(other): return False
     if not ofp_header.__eq__(self, other): return False
-    if self.buffer_id !=  other.buffer_id: return False
+    if (self.buffer_id & 0xffffffff) != (other.buffer_id & 0xffffffff): return False
     if self.in_port !=  other.in_port: return False
     if self.actions !=  other.actions: return False
     return True
@@ -3186,7 +3186,7 @@ class ofp_packet_in (ofp_header):
   def __eq__ (self, other):
     if type(self) != type(other): return False
     if not ofp_header.__eq__(self, other): return False
-    if self.buffer_id !=  other.buffer_id: return False
+    if (self.buffer_id & 0xffffffff) != (other.buffer_id & 0xffffffff): return False
     if self._total_len !=  other._total_len: return False
     if self.in_port !=  other.in_port: return False
     if self.reason !=  other.reason: return False
