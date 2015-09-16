@@ -54,6 +54,7 @@ class S1(EventMixin):
     s1_msg.match = of.ofp_match(dl_dst=h1)
     s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][h1]))
     s1_msg.buffer_id = event.ofp.buffer_id
+    self.log.info("XXX s1 dest h1 Output with buffer_id: %d", event.buffer_id)
     return s1_msg
 
   def get_dst_h2(self, event):
@@ -63,6 +64,7 @@ class S1(EventMixin):
     s1_msg.match = of.ofp_match(dl_dst=h2)
     s1_msg.actions.append(of.ofp_action_output(port=hosts_map[s1][h2]))
     s1_msg.buffer_id = event.ofp.buffer_id
+    self.log.info("XXX s1 dest h1 Output with buffer_id: %d", event.buffer_id)
 
     s2_msg = of.ofp_flow_mod()
     #s2_msg.match = of.ofp_match.from_packet(packet)
@@ -178,6 +180,7 @@ class S2(EventMixin):
     s2_msg.match = of.ofp_match(dl_dst=h1)
     s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][h1]))
     s2_msg.buffer_id = event.ofp.buffer_id
+    self.log.info("XXX s2 dest h1 Output with buffer_id: %d", event.buffer_id)
     return s1_msg, s2_msg
 
   def get_dst_h2(self, event):
@@ -187,6 +190,7 @@ class S2(EventMixin):
     s2_msg.match = of.ofp_match(dl_dst=h2)
     s2_msg.actions.append(of.ofp_action_output(port=hosts_map[s2][h2]))
     s2_msg.buffer_id = event.ofp.buffer_id
+    self.log.info("XXX s2 dest h2 Output with buffer_id: %d", event.buffer_id)
     return s2_msg
 
   def inconsistent_PacketIn(self, event):
