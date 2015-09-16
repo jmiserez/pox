@@ -228,7 +228,7 @@ class FlowTable (EventMixin):
     """ return the highest priority flow table entry that matches the given packet
     on the given in_port, or None if no matching entry is found. """
     # remove expired flows before starting to process read to flow table
-    self.remove_expired_entries()
+    # TODO(jm): self.remove_expired_entries()
     packet_match = ofp_match.from_packet(packet, in_port)
 
     for entry in self.table:
@@ -248,7 +248,7 @@ class SwitchFlowTable(FlowTable):
     @return a tuple (added|modified|removed, [list of affected entries])
     """
     # remove expired flows before starting to process write to flow table
-    self.remove_expired_entries()
+    # TODO(jm): self.remove_expired_entries()
     if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
       raise NotImplementedError("OFPFF_CHECK_OVERLAP checking not implemented")
     if(flow_mod.out_port != OFPP_NONE and
