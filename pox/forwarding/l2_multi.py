@@ -209,7 +209,8 @@ class Switch (EventMixin):
       return
 
     self._install_path(p, match, event.ofp.buffer_id)
-    log.debug("Installing path for %s -> %s %04x (%i hops)", match.dl_src, match.dl_dst, match.dl_type, len(p))
+    #log.debug("Installing path for %s -> %s %04x (%i hops)", match.dl_src, match.dl_dst, match.dl_type, len(p))
+    log.debug("Installing path for %s -> %s (%i hops)", match.dl_src, match.dl_dst, len(p))
     #log.debug("installing path for %s.%i -> %s.%i",
     #          (src[0].dpid, src[1], dst[0].dpid, dst[1]))
 
@@ -277,7 +278,9 @@ class Switch (EventMixin):
       else:
         dest = mac_map[packet.dst]
         #print packet.dst, "is on", dest
-        match = of.ofp_match.from_packet(packet)
+        #match = of.ofp_match.from_packet(packet)
+        # Make it truely L2 Forwarding
+        match = of.ofp_match(dl_src=packet.src, dl_dst=packet.dst)
         self.install_path(dest[0], dest[1], match, event)
 
   def disconnect (self):
