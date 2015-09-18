@@ -18,6 +18,7 @@ from pox.lib.revent import Event, EventMixin
 from pox.openflow.libopenflow_01 import *
 from pox.openflow.util import make_type_to_class_table
 from pox.openflow.flow_table import SwitchFlowTable
+from pox.openflow.flow_table import FlowTableModification
 from pox.lib.packet import *
 
 from errno import EAGAIN
@@ -118,6 +119,16 @@ class SoftwareSwitch(EventMixin):
       self.capabilities = capabilities
     else:
       self.capabilities = SwitchCapabilities(miss_send_len)
+      
+    # set listener to send flow removed messages
+    self.table.addListener(FlowTableModification, self.on_FlowTableModification)
+
+  def on_FlowTableModification(self, table_mod):
+    if table_mod.removed != [] and table_mod.reason != None:
+      assert table_mod.now is not None
+      for entry in table_mod.removed:
+        if (entry.flags & OFPFF_SEND_FLOW_REM) != 0:
+          self.send_flow_removed(entry, table_mod.reason, table_mod.now)
 
   def on_message_received(self, connection, msg):
     ofp_type = msg.header_type
@@ -190,6 +201,7 @@ class SoftwareSwitch(EventMixin):
     """Handle flow mod: just print it here
     """
     self.log.debug("Flow mod %s: %s", self.name, ofp.show())
+    self.table.remove_expired_entries()
     self.table.process_flow_mod(ofp)
     if(ofp.buffer_id > 0):
       self._process_actions_for_packet_from_buffer(ofp.actions, ofp.buffer_id)
@@ -334,6 +346,11 @@ class SoftwareSwitch(EventMixin):
                         data = packet.pack())
 
     self.send(msg)
+    
+  def send_flow_removed(self, entry, reason, now):
+    self.log.debug("Send flow_removed %s ", self.name)
+    msg = entry.flow_removed(reason, now)
+    self.send(msg)
 
   def send_echo(self, xid=0):
     """Send echo request
@@ -364,6 +381,7 @@ class SoftwareSwitch(EventMixin):
     assert_type("packet", packet, ethernet, none_ok=False)
     assert_type("in_port", in_port, int, none_ok=False)
 
+    self.table.remove_expired_entries()
     entry = self.table.entry_for_packet(packet, in_port)
     if(entry != None):
       entry.touch_packet(len(packet))
