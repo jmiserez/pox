@@ -30,6 +30,9 @@ import math
 
 log = logging.getLogger("FlowTable")
 
+class OFPFMFC_OVERLAP_Exception(Exception):
+    pass
+
 # FlowTable Entries:
 #   match - ofp_match (13-tuple)
 #   counters - hash from name -> count. May be stale
@@ -86,6 +89,12 @@ class TableEntry (object):
       return (self.match == match and self.priority == priority) and check_port()
     else:
       return match.matches_with_wildcards(self.match) and check_port()
+    
+  def check_overlap(self, match, priority = 0):
+    if self.priority == priority:
+      return self.match.check_overlap(match)
+    else:
+      return False
 
   def touch_packet(self, byte_count, now=None):
     """ update the counters and expiry timer of this entry for a packet with a given byte count"""
@@ -275,6 +284,9 @@ class FlowTable (EventMixin):
         return entry
     else:
       return None
+  
+  def overlapping_entries(self, match, priority = 0):
+    return [ entry for entry in self.table if entry.check_overlap(match, priority) ]
 
 class SwitchFlowTable(FlowTable):
   """
@@ -286,10 +298,10 @@ class SwitchFlowTable(FlowTable):
     """ Process a flow mod sent to the switch
     @return a tuple (added|modified|removed, [list of affected entries])
     """
-    if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
-      #TODO(jm): Implement overlap checking (it's implemented in POX now!)
-      raise NotImplementedError("OFPFF_CHECK_OVERLAP checking not implemented")
     if flow_mod.command == OFPFC_ADD:
+      if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
+        if len(self.overlapping_entries(flow_mod.match, flow_mod.priority)) > 0:
+          raise OFPFMFC_OVERLAP_Exception()
       # exactly matching entries have to be removed, but strangely these should not trigger FLOW_REMOVED messages
       self.remove_matching_entries(flow_mod.match,flow_mod.priority, strict=True, reason=None)
       return ("added", self.add_entry(TableEntry.from_flow_mod(flow_mod)))
