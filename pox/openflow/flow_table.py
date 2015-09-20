@@ -259,9 +259,9 @@ class FlowTable (EventMixin):
     removed_flows = remove_flows_hard + remove_flows_idle
     return removed_flows
 
-  def remove_matching_entries(self, match, priority=0, strict=False, reason=None, now=None):
+  def remove_matching_entries(self, match, priority=0, strict=False, out_port=None, reason=None, now=None):
     if now==None: now = time.time()
-    remove_flows = self.matching_entries(match, priority, strict)
+    remove_flows = self.matching_entries(match, priority, strict, out_port)
     self.remove_entries(remove_flows, reason=reason, now=now)
     return remove_flows
 
@@ -289,11 +289,6 @@ class SwitchFlowTable(FlowTable):
     if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
       #TODO(jm): Implement overlap checking (it's implemented in POX now!)
       raise NotImplementedError("OFPFF_CHECK_OVERLAP checking not implemented")
-    if(flow_mod.out_port != OFPP_NONE and
-            flow_mod.command == ofp_flow_mod_command_rev_map['OFPFC_DELETE']):
-      #TODO(jm): Implement out_port checking
-      raise NotImplementedError("flow_mod outport checking not implemented")
-
     if flow_mod.command == OFPFC_ADD:
       # exactly matching entries have to be removed, but strangely these should not trigger FLOW_REMOVED messages
       self.remove_matching_entries(flow_mod.match,flow_mod.priority, strict=True, reason=None)
@@ -314,7 +309,8 @@ class SwitchFlowTable(FlowTable):
 
     elif flow_mod.command == OFPFC_DELETE or flow_mod.command == OFPFC_DELETE_STRICT:
       is_strict = (flow_mod.command == OFPFC_DELETE_STRICT)
-      return ("removed", self.remove_matching_entries(flow_mod.match, flow_mod.priority, is_strict, reason=OFPRR_DELETE))
+      out_port = flow_mod.out_port
+      return ("removed", self.remove_matching_entries(flow_mod.match, flow_mod.priority, is_strict, out_port=out_port, reason=OFPRR_DELETE))
     else:
       raise AttributeError("Command not yet implemented: %s" % flow_mod.command)
 
