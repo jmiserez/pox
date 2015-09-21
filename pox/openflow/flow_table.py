@@ -26,8 +26,12 @@ from pox.lib.revent import *
 
 import time
 import logging
+import math
 
 log = logging.getLogger("FlowTable")
+
+class OFPFMFC_OVERLAP_Exception(Exception):
+    pass
 
 # FlowTable Entries:
 #   match - ofp_match (13-tuple)
@@ -85,6 +89,12 @@ class TableEntry (object):
       return (self.match == match and self.priority == priority) and check_port()
     else:
       return match.matches_with_wildcards(self.match) and check_port()
+    
+  def check_overlap(self, match, priority = 0):
+    if self.priority == priority:
+      return self.match.check_overlap(match)
+    else:
+      return False
 
   def touch_packet(self, byte_count, now=None):
     """ update the counters and expiry timer of this entry for a packet with a given byte count"""
@@ -93,11 +103,15 @@ class TableEntry (object):
     self.counters["packets"] += 1
     self.counters["last_touched"] = now
 
-  def is_expired(self, now=None):
-    #TODO(jm): split into two, for idle/hard. (To implement expiry reason)
-    """" return whether this flow entry is expired due to its idle timeout or hard timeout"""
+  def is_expired_idle(self, now=None):
+    """" return whether this flow entry is expired due to its idle timeout"""
     if now==None: now = time.time()
-    return (self.hard_timeout > 0 and now - self.counters["created"] > self.hard_timeout) or (self.idle_timeout > 0 and now - self.counters["last_touched"] > self.idle_timeout)
+    return (self.idle_timeout > 0 and now - self.counters["last_touched"] > self.idle_timeout)
+  
+  def is_expired_hard(self, now=None):
+    """" return whether this flow entry is expired due to its hard timeout"""
+    if now==None: now = time.time()
+    return (self.hard_timeout > 0 and now - self.counters["created"] > self.hard_timeout)
 
   def __str__ (self):
     return self.__class__.__name__ + "\n  " + self.show()
@@ -108,22 +122,51 @@ class TableEntry (object):
   def show(self):
        return "priority=%s, cookie=%x, idle_timeoout=%d, hard_timeout=%d, match=%s, actions=%s buffer_id=%s" % (
           self.priority, self.cookie, self.idle_timeout, self.hard_timeout, self.match, repr(self.actions), str(self.buffer_id))
+       
+  def duration_sec_nsec(self, now=None):
+    """
+    Return the duration this flow has been installed.
+    Returns a tuple of two ints with (seconds, nanoseconds). The total installed time in
+    nanoseconds is duration_sec*10^9+duration_nsec
+    """
+    frac_sec,full_sec = math.modf(now - self.counters["created"])
+    return (int(full_sec),int(frac_sec * 1e9))
+  
+  def duration_in_nanoseconds(self, now=None):
+    duration_sec,duration_nsec = self.duration_sec_nsec(now)
+    return duration_sec*10^9+duration_nsec
 
   def flow_stats(self, now=None):
-    if now == None: now = time.time()
-    duration = now - self.counters["created"]
+    if now is None: now = time.time()
+    dur_sec,dur_nsec = self.duration_sec_nsec(now)
     return ofp_flow_stats (
         match = self.match,
-        duration_sec = int(duration),
-        duration_nsec = int((duration - int(duration)) * 1e9),
+        duration_sec=dur_sec,
+        duration_nsec=dur_nsec,
         priority = self.priority,
         idle_timeout = self.idle_timeout,
         hard_timeout = self.hard_timeout,
         cookie = self.cookie,
         packet_count = self.counters["packets"],
-        byte_count = self.counters["last_touched"],
+        byte_count = self.counters["bytes"],
         actions = self.actions
         )
+    
+  def flow_removed (self, reason, now=None):
+    if now is None: now = time.time()
+    dur_sec,dur_nsec = self.duration_sec_nsec(now)
+    fr = ofp_flow_removed()
+    fr.match = self.match
+    fr.cookie = self.cookie
+    fr.priority = self.priority
+    fr.reason = reason
+    fr.duration_sec = dur_sec
+    fr.duration_nsec = dur_nsec
+    fr.idle_timeout = self.idle_timeout
+    fr.hard_timeout = self.hard_timeout
+    fr.packet_count = self.counters["packets"]
+    fr.byte_count = self.counters["bytes"]
+    return fr
 
   def aggregate_stats (self, match, out_port=None):
     mc_es = self.matching_entries(match=match, strict=False, out_port=out_port)
@@ -139,10 +182,12 @@ class TableEntry (object):
                                flow_count=flow_count)
 
 class FlowTableModification (Event):
-  def __init__(self, added=[], removed=[]):
+  def __init__(self, added=[], removed=[], reason=None, now=None):
     Event.__init__(self)
     self.added = added
     self.removed = removed
+    self.reason = reason
+    self.now = now
 
 class FlowTable (EventMixin):
   _eventMixin_events = set([FlowTableModification])
@@ -180,12 +225,13 @@ class FlowTable (EventMixin):
 
     self.raiseEvent(FlowTableModification(added=[entry]))
 
-  def remove_entry(self, entry):
-    if not isinstance(entry, TableEntry):
-      raise "Not an Entry type"
-    self.table.remove(entry)
-    self.raiseEvent(FlowTableModification(removed=[entry]))
-
+  def remove_entries(self, entries=[], reason=None, now=None):
+    for entry in entries:
+      if not isinstance(entry, TableEntry):
+        raise "Not an Entry type"
+      self.table.remove(entry)
+    self.raiseEvent(FlowTableModification(removed=[entries], reason=reason, now=now))
+  
   def entries_for_port(self, port_no):
     entries = []
     for entry in self.table:
@@ -207,28 +253,30 @@ class FlowTable (EventMixin):
   def table_stats(self):
     return ofp_table_stats()
 
-  def expired_entries(self, now=None):
-    return [ entry for entry in self.table if entry.is_expired(now) ]
+  def expired_entries_idle(self, now=None):
+    return [ entry for entry in self.table if entry.is_expired_idle(now) ]
+  
+  def expired_entries_hard(self, now=None):
+    return [ entry for entry in self.table if entry.is_expired_hard(now) ]
 
   def remove_expired_entries(self, now=None):
-    remove_flows = self.expired_entries(now)
-    for entry in remove_flows:
-        self.table.remove(entry)
-    self.raiseEvent(FlowTableModification(removed=remove_flows))
-    return remove_flows
+    if now==None: now = time.time()
+    remove_flows_hard = self.expired_entries_hard(now)
+    self.remove_entries(remove_flows_hard, reason=OFPRR_HARD_TIMEOUT, now=now)
+    remove_flows_idle = self.expired_entries_idle(now)
+    self.remove_entries(remove_flows_idle, reason=OFPRR_IDLE_TIMEOUT, now=now)
+    removed_flows = remove_flows_hard + remove_flows_idle
+    return removed_flows
 
-  def remove_matching_entries(self, match, priority=0, strict=False):
-    remove_flows = self.matching_entries(match, priority, strict)
-    for entry in remove_flows:
-        self.table.remove(entry)
-    self.raiseEvent(FlowTableModification(removed=remove_flows))
+  def remove_matching_entries(self, match, priority=0, strict=False, out_port=None, reason=None, now=None):
+    if now==None: now = time.time()
+    remove_flows = self.matching_entries(match, priority, strict, out_port)
+    self.remove_entries(remove_flows, reason=reason, now=now)
     return remove_flows
 
   def entry_for_packet(self, packet, in_port):
     """ return the highest priority flow table entry that matches the given packet
     on the given in_port, or None if no matching entry is found. """
-    # remove expired flows before starting to process read to flow table
-    # TODO(jm): self.remove_expired_entries()
     packet_match = ofp_match.from_packet(packet, in_port)
 
     for entry in self.table:
@@ -236,6 +284,9 @@ class FlowTable (EventMixin):
         return entry
     else:
       return None
+  
+  def overlapping_entries(self, match, priority = 0):
+    return [ entry for entry in self.table if entry.check_overlap(match, priority) ]
 
 class SwitchFlowTable(FlowTable):
   """
@@ -247,17 +298,12 @@ class SwitchFlowTable(FlowTable):
     """ Process a flow mod sent to the switch
     @return a tuple (added|modified|removed, [list of affected entries])
     """
-    # remove expired flows before starting to process write to flow table
-    # TODO(jm): self.remove_expired_entries()
-    if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
-      raise NotImplementedError("OFPFF_CHECK_OVERLAP checking not implemented")
-    if(flow_mod.out_port != OFPP_NONE and
-            flow_mod.command == ofp_flow_mod_command_rev_map['OFPFC_DELETE']):
-      raise NotImplementedError("flow_mod outport checking not implemented")
-
     if flow_mod.command == OFPFC_ADD:
-      # exactly matching entries have to be removed
-      self.remove_matching_entries(flow_mod.match,flow_mod.priority, strict=True)
+      if(flow_mod.flags & OFPFF_CHECK_OVERLAP):
+        if len(self.overlapping_entries(flow_mod.match, flow_mod.priority)) > 0:
+          raise OFPFMFC_OVERLAP_Exception()
+      # exactly matching entries have to be removed, but strangely these should not trigger FLOW_REMOVED messages
+      self.remove_matching_entries(flow_mod.match,flow_mod.priority, strict=True, reason=None)
       return ("added", self.add_entry(TableEntry.from_flow_mod(flow_mod)))
     elif flow_mod.command == OFPFC_MODIFY or flow_mod.command == OFPFC_MODIFY_STRICT:
       is_strict = (flow_mod.command == OFPFC_MODIFY_STRICT)
@@ -274,9 +320,9 @@ class SwitchFlowTable(FlowTable):
         return ("modified", modified)
 
     elif flow_mod.command == OFPFC_DELETE or flow_mod.command == OFPFC_DELETE_STRICT:
-      #TODO(jm): Implement expiry reason (OFPRR_DELETE, OFPRR_IDLE_TIMEOUT, OFPRR_HARD_TIMEOUT)
       is_strict = (flow_mod.command == OFPFC_DELETE_STRICT)
-      return ("removed", self.remove_matching_entries(flow_mod.match, flow_mod.priority, is_strict))
+      out_port = flow_mod.out_port
+      return ("removed", self.remove_matching_entries(flow_mod.match, flow_mod.priority, is_strict, out_port=out_port, reason=OFPRR_DELETE))
     else:
       raise AttributeError("Command not yet implemented: %s" % flow_mod.command)
 
@@ -415,7 +461,7 @@ class NOMFlowTable(EventMixin):
     for entry in self.flow_table.entries:
       if(flow_removed.match == entry.match and flow_removed.priority == entry.priority):
         #print "Removing matching entry from NOM"
-        self.flow_table.remove_entry(entry)
+        self.flow_table.remove_entries(entries=[entry])
         self.raiseEvent(FlowTableModification(removed=[entry]))
         return EventHalt
     return EventContinue
