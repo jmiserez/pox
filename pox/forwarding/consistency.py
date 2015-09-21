@@ -7,8 +7,13 @@ from pox.lib.addresses import EthAddr
 from pox.lib.addresses import IPAddr
 from pox.lib.recoco.recoco import Timer
 import time
+from itertools import count
+
 
 log = core.getLogger()
+
+
+XID = count(1000)
 
 
 faculty = EthAddr("00:00:00:00:00:02")
@@ -63,15 +68,28 @@ fs_ports[internet] = 2
 fs_ports[monitor] = 3
 
 
+waiting_calls = {} #xid-> [list of function calls]
+
+
+def get_barrier_msg():
+  """
+  Generate a barrier request message
+  """
+  barrier_msg = of.ofp_barrier_request()
+  barrier_msg.xid = XID.next()
+  log.info("Genrated barrier msg with xid: %d", barrier_msg.xid)
+  return barrier_msg
+
+
 class InternetSwitch(EventMixin):
 
   def __init__ (self, connection):
     self.connection = connection
-
+    self.dpid = internet
+    self.log = core.getLogger("InternalSwitch")
+    self.log.debug("Initialized Internet Switch")
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
-    self.log = core.getLogger("InternalSwitch")
-    self.log.debug("Initializing Internet Switch")
 
   def install_internal(self):
     """Allow internal switches to talk to each others"""
@@ -117,16 +135,25 @@ class InternetSwitch(EventMixin):
     packet = event.parse()
     self.log.info("Ignoring packet in at Internet Switch: %s", str(packet))
 
+  def _handle_BarrierIn(self, event):
+    self.log.info("BARRIER REPLY: xid=%s", event.xid)
+    if event.xid not in waiting_calls:
+      self.log.warn("BARRIER REPLY for unkown xid=%s, current: %s", event.xid, waiting_calls.keys())
+      return
+    calls = waiting_calls[event.xid]
+    del waiting_calls[event.xid]
+    for call in calls:
+      call()
 
 class InternalSwitch(EventMixin):
 
   def __init__ (self, connection):
     self.connection = connection
-
+    self.dpid = internal
+    self.log = core.getLogger(self.__class__.__name__)
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
-    self.log = core.getLogger(self.__class__.__name__)
-    self.log.debug("Initializing Internal Switch")
+    self.log.debug("Initialized Internal Switch")
 
   def install_internal(self):
     """Allow internal switches to talk to each others"""
@@ -170,11 +197,21 @@ class InternalSwitch(EventMixin):
     packet = event.parse()
     self.log.info("Ignoring packet in at Internal Switch: %s", str(packet))
 
+  def _handle_BarrierIn(self, event):
+    self.log.info("BARRIER REPLY: xid=%s", event.xid)
+    if event.xid not in waiting_calls:
+      self.log.warn("BARRIER REPLY for unkown xid=%s, current: %s", event.xid, waiting_calls.keys())
+      return
+    calls = waiting_calls[event.xid]
+    del waiting_calls[event.xid]
+    for call in calls:
+      call()
 
 class FSwitch(EventMixin):
-  def __init__ (self, connection, deny=False):
+  def __init__ (self, connection, dpid, deny=False):
     self.connection = connection
     self.deny = deny
+    self.dpid = dpid
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
 
@@ -187,6 +224,7 @@ class FSwitch(EventMixin):
     self.connection.send(msg)
 
   def deny_service(self, ip, priority=1000):
+    self.log.info("Denying Service to src='%s'", ip)
     msg = of.ofp_flow_mod()
     msg.match = of.ofp_match(dl_type=0x0800, nw_dst=ip)
     msg.priority = priority
@@ -223,12 +261,22 @@ class FSwitch(EventMixin):
     self.connection.send(internal_msg)
     self.connection.send(internet_msg)
 
+  def _handle_BarrierIn(self, event):
+    self.log.info("BARRIER REPLY: xid=%s", event.xid)
+    if event.xid not in waiting_calls:
+      self.log.warn("BARRIER REPLY for unkown xid=%s, current: %s", event.xid, waiting_calls.keys())
+      return
+    calls = waiting_calls[event.xid]
+    del waiting_calls[event.xid]
+    for call in calls:
+      call()
+
 
 class F1Switch(FSwitch):
   def __init__ (self, connection, deny=False):
-    super(F1Switch, self).__init__(connection, deny)
+    super(F1Switch, self).__init__(connection, f1, deny)
     self.log = core.getLogger(self.__class__.__name__)
-    self.log.debug("Initializing F1 Switch")
+    self.log.debug("Initialized F1 Switch")
 
   def install_v1(self):
     self.log.info("Installing v1")
@@ -251,9 +299,9 @@ class F1Switch(FSwitch):
 
 class F2Switch(FSwitch):
   def __init__ (self, connection, deny=False):
-    super(F2Switch, self).__init__(connection, deny)
+    super(F2Switch, self).__init__(connection, f2, deny)
     self.log = core.getLogger(self.__class__.__name__)
-    self.log.debug("Initializing F2 Switch")
+    self.log.debug("Initialized F2 Switch")
 
   def install_v1(self):
     self.log.info("Installing v2")
@@ -268,16 +316,15 @@ class F2Switch(FSwitch):
     """
     Handles packet in messages from the switch to implement above algorithm.
     """
-
     packet = event.parse()
     log.info("XXX Ignoring packet in at F2 Switch: %s", str(packet))
 
 
 class F3Switch(FSwitch):
   def __init__ (self, connection, deny=False):
-    super(F3Switch, self).__init__(connection, deny)
+    super(F3Switch, self).__init__(connection, f3, deny)
     self.log = core.getLogger("F3Switch")
-    self.log.info("Initializing F3 Switch")
+    self.log.info("Initialized F3 Switch")
 
   def install_v1(self):
     self.log.info("Installing v1")
@@ -298,11 +345,11 @@ class F3Switch(FSwitch):
 class MonitorSwitch(EventMixin):
   def __init__ (self, connection):
     self.connection = connection
-
+    self.dpid = monitor
+    self.log = core.getLogger(self.__class__.__name__)
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
-    self.log = core.getLogger(self.__class__.__name__)
-    self.log.debug("Initializing MonitorSwitch Switch")
+    self.log.debug("Initialized MonitorSwitch Switch")
 
   def install_v1(self):
     self.log.info("installing v1")
@@ -336,14 +383,23 @@ class MonitorSwitch(EventMixin):
     packet = event.parse()
     self.log.info("XXX Ignoring packet in at MonitorSwitch Switch: %s and port %d", str(packet) , event.port)
 
+  def _handle_BarrierIn(self, event):
+    self.log.info("BARRIER REPLY: xid=%s", event.xid)
+    if event.xid not in waiting_calls:
+      self.log.warn("BARRIER REPLY for unkown xid=%s, current: %s", event.xid, waiting_calls.keys())
+      return
+    calls = waiting_calls[event.xid]
+    del waiting_calls[event.xid]
+    for call in calls:
+      call()
+
 
 class Main(EventMixin):
   """
   Waits for OpenFlow switches to connect and makes them learning switches.
   """
   def __init__ (self, consistent=True, update_wait=5, update_once=True,
-                consistent_sleep=5, deny=False):
-    self.listenTo(core.openflow)
+                consistent_sleep=5, deny=False, use_barriers=True):
     self.log = core.getLogger("Main")
     self.handlers = {}
     self.consistent = consistent
@@ -352,8 +408,39 @@ class Main(EventMixin):
     self.consistent_sleep = consistent_sleep
     self.deny = deny
     self._all_connected = False
+    self.use_barriers = use_barriers
+    self.listenTo(core.openflow)
 
-  def inconsistent_update(self):
+  def slow_update_sleep(self):
+    self.log.info("Sleeping to simulate slow update")
+    time.sleep(self.consistent_sleep)
+    self.log.info("Just woke up from slow update")
+
+  def incosnsitent_update_barriers(self):
+    self.log.info("XXX Inconsistent Update with barriers")
+    # Prepare the update requests and the barriers
+    redir_guest_to_f2 = lambda: self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
+    barr1 = get_barrier_msg()
+    req_barr1 = lambda: self.handlers[internal].connection.send(barr1)
+
+    redir_student_to_f3 = lambda: self.handlers[internal].redirect_traffic(student, internal_ports[f3])
+    barr2 = get_barrier_msg()
+    req_barr2 = lambda: self.handlers[internal].connection.send(barr2)
+    slow_update = lambda: self.slow_update_sleep()
+
+    monitor_on_f2 = lambda: self.handlers[f2].monitor_service(host_ips[service1])
+    barr3 = get_barrier_msg()
+    req_barr3 = lambda: self.handlers[f2].connection.send(barr3)
+
+    # Prepare the update sequence
+    waiting_calls[barr1.xid] = [redir_student_to_f3, req_barr2, slow_update]
+    waiting_calls[barr2.xid] = [monitor_on_f2, req_barr3]
+
+    # Start the update process
+    redir_guest_to_f2()
+    req_barr1()
+
+  def inconsistent_update_wait(self):
     self.log.info("XXX Inconsistent Update")
     # 1- Redirect guest to F2
     self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
@@ -365,7 +452,41 @@ class Main(EventMixin):
     self.log.info("Just woke up from slow update")
     self.handlers[f2].monitor_service(host_ips[service1])
 
-  def consistent_update(self):
+  def consistent_update_barriers(self):
+    self.log.info("XXX Consistent Update with barriers")
+    # Prepare the update requests and the barriers
+
+    # From the paper
+    # 1- Update I to forward S traffic to F3, while continuing to
+    #    forward U and G traffic to F1 and F traffic to F3.
+    redir_student_to_f3 = lambda: self.handlers[internal].redirect_traffic(student, internal_ports[f3])
+    barr1 = get_barrier_msg()
+    req_barr1 = lambda: self.handlers[internal].connection.send(barr1)
+
+    # 2- Wait until in-flight packets have been processed by F2.
+    wait_in_flight = lambda: self.slow_update_sleep()
+
+    # 3- Update F2 to deny SSH packets.
+    monitor_on_f2 = lambda: self.handlers[f2].monitor_service(host_ips[service1])
+    barr2 = get_barrier_msg()
+    req_barr2 = lambda: self.handlers[f2].connection.send(barr2)
+
+    # 4- Update I to forward G traffic to F2, while continuing to
+    #    forward U traffic to F1 and S and F traffic to F3.
+
+    redir_guest_to_f2 = lambda: self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
+    barr3 = get_barrier_msg()
+    req_barr3 = lambda: self.handlers[internal].connection.send(barr3)
+
+    # Prepare the update sequence
+    waiting_calls[barr1.xid] = [wait_in_flight, monitor_on_f2, req_barr2]
+    waiting_calls[barr2.xid] = [redir_guest_to_f2, req_barr3]
+
+    # Start the update process
+    redir_student_to_f3()
+    req_barr1()
+
+  def consistent_update_wait(self):
     self.log.info("XXX Consistent Update")
     # From the paper
     # 1- Update I to forward S traffic to F3, while continuing to
@@ -384,10 +505,19 @@ class Main(EventMixin):
 
   def update_version(self):
     self.log.info("XXX Update version triggered")
+    #self.incosnsitent_update_barriers()
+    #return
+
     if self.consistent:
-      self.consistent_update()
+      if self.use_barriers:
+        self.consistent_update_barriers()
+      else:
+        self.consistent_update_wait()
     else:
-      self.inconsistent_update()
+      if self.use_barriers:
+        self.incosnsitent_update_barriers()
+      else:
+        self.inconsistent_update_wait()
 
   def _handle_ConnectionUp (self, event):
     log.debug("Connection %s", event.connection)
@@ -430,7 +560,7 @@ class Main(EventMixin):
 
 
 def launch (consistent=True, update_wait=5, update_once=True,
-            consistent_sleep=5, deny=False):
+            consistent_sleep=5, deny=False, barriers=True):
   """
   Starts an L2 learning switch.
   """
@@ -438,5 +568,6 @@ def launch (consistent=True, update_wait=5, update_once=True,
                    update_wait=int(update_wait),
                    update_once=str_to_bool(update_once),
                    consistent_sleep=int(consistent_sleep),
-                   deny=str_to_bool(deny))
+                   deny=str_to_bool(deny),
+                   use_barriers=str_to_bool(barriers))
 
