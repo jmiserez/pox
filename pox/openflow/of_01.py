@@ -658,7 +658,7 @@ class Connection (EventMixin):
         self.print_msgin(self.dpid, encoded_msgin)
         Connection._hb_current_msgin = (self.dpid, encoded_msgin)
       else:
-        _hb_current_msgin = None
+        Connection._hb_current_msgin = None
       
       msg = classes[ofp_type]()
       # msg.unpack implicitly only examines its own bytes, and not trailing
@@ -680,6 +680,8 @@ class Connection (EventMixin):
                       "%s %s", self,self,
                       ("\n" + str(self) + " ").join(str(msg).split('\n')))
         continue
+      finally:
+        Connection._hb_current_msgin = None
     return True
 
   def _incoming_stats_reply (self, ofp):
