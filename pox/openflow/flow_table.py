@@ -182,10 +182,11 @@ class TableEntry (object):
                                flow_count=flow_count)
 
 class FlowTableModification (Event):
-  def __init__(self, added=[], removed=[], reason=None, now=None):
+  def __init__(self, added=[], removed=[], modified=[], reason=None, now=None):
     Event.__init__(self)
     self.added = added
     self.removed = removed
+    self.modified = modified
     self.reason = reason
     self.now = now
 
@@ -231,7 +232,14 @@ class FlowTable (EventMixin):
         raise "Not an Entry type"
       self.table.remove(entry)
       self.raiseEvent(FlowTableModification(removed=[entry], reason=reason, now=now))
-    
+  
+  def modify_entries(self, actions, entries=[]):
+    for entry in entries:
+      if not isinstance(entry, TableEntry):
+        raise "Not an Entry type"
+      entry.actions = actions
+      self.raiseEvent(FlowTableModification(modified=[entry]))
+                      
   def entries_for_port(self, port_no):
     entries = []
     for entry in self.table:
@@ -273,6 +281,11 @@ class FlowTable (EventMixin):
     remove_flows = self.matching_entries(match, priority, strict, out_port)
     self.remove_entries(remove_flows, reason=reason, now=now)
     return remove_flows
+  
+  def modify_matching_entries(self, actions, match, priority=0, strict=False):
+    modify_flows = self.matching_entries(match, priority, strict)
+    self.modify_entries(modify_flows, actions)
+    return modify_flows
 
   def entry_for_packet(self, packet, in_port):
     """ return the highest priority flow table entry that matches the given packet
@@ -307,12 +320,7 @@ class SwitchFlowTable(FlowTable):
       return ("added", self.add_entry(TableEntry.from_flow_mod(flow_mod)))
     elif flow_mod.command == OFPFC_MODIFY or flow_mod.command == OFPFC_MODIFY_STRICT:
       is_strict = (flow_mod.command == OFPFC_MODIFY_STRICT)
-      modified = []
-      for entry in self.table:
-        # update the actions field in the matching flows
-        if(entry.is_matched_by(flow_mod.match, priority=flow_mod.priority, strict=is_strict)):
-          entry.actions = flow_mod.actions
-          modified.append(entry)
+      modified = self.modify_matching_entries(flow_mod.actions, flow_mod.match, priority=flow_mod.priority, strict=is_strict)
       if(len(modified) == 0):
         # if no matching entry is found, modify acts as add
         return ("added", self.add_entry(TableEntry.from_flow_mod(flow_mod)))
