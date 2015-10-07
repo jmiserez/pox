@@ -230,8 +230,8 @@ class FlowTable (EventMixin):
       if not isinstance(entry, TableEntry):
         raise "Not an Entry type"
       self.table.remove(entry)
-    self.raiseEvent(FlowTableModification(removed=[entries], reason=reason, now=now))
-  
+      self.raiseEvent(FlowTableModification(removed=[entry], reason=reason, now=now))
+    
   def entries_for_port(self, port_no):
     entries = []
     for entry in self.table:
