@@ -145,6 +145,7 @@ class InternetSwitch(EventMixin):
     for call in calls:
       call()
 
+
 class InternalSwitch(EventMixin):
 
   def __init__ (self, connection):
@@ -206,6 +207,7 @@ class InternalSwitch(EventMixin):
     del waiting_calls[event.xid]
     for call in calls:
       call()
+
 
 class FSwitch(EventMixin):
   def __init__ (self, connection, dpid, deny=False):
@@ -501,6 +503,9 @@ class Main(EventMixin):
     #self.handlers[f2].redirect_serivce(host_ips[service1], fs_ports[monitor])
     # 4- Update I to forward G traffic to F2, while continuing to
     #    forward U traffic to F1 and S and F traffic to F3.
+    self.log.info("Sleeping for %d secs", self.consistent_sleep)
+    time.sleep(5)
+    self.log.info("Woke up after %d secs", self.consistent_sleep)
     self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
 
   def update_version(self):
