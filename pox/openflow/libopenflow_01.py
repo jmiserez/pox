@@ -1018,6 +1018,11 @@ class ofp_action_header (object):
     outstr += prefix + 'len: ' + str(self.length) + '\n'
     return outstr
 
+  def __repr__(self):
+    if not self.type:
+      return "BAD ACTION, type=None"
+    return ofp_action_type_rev_map[self.type]
+
 class ofp_action_output (object):
   def __init__ (self, **kw):
     self.type = OFPAT_OUTPUT
@@ -1361,7 +1366,7 @@ class ofp_action_pop_mpls (object):
     outstr += prefix + 'ethertype: ' + str(self.ethertype) + '\n'
     return outstr
 
-#@openflow_action('OFPAT_STRIP_VLAN', 3)
+
 class ofp_action_strip_vlan (object):
   def __init__ (self):
     self.type = OFPAT_STRIP_VLAN
@@ -1378,12 +1383,11 @@ class ofp_action_strip_vlan (object):
       packed = struct.pack("!HHi", self.type, self.length, 0)
       return packed
 
-  def unpack (self, raw, offset=0):
-    _offset = offset
-    offset,(self.type, length) = _unpack("!HH", raw, offset)
-    offset = _skip(raw, offset, 4)
-    assert offset - _offset == len(self)
-    return offset
+  def unpack (self, binaryString):
+    if (len(binaryString) < 8):
+      return binaryString
+    (self.type, self.length, self.vlan_vid) = struct.unpack_from("!HHH", binaryString, 0)
+    return binaryString[8:]
 
   @staticmethod
   def __len__ ():
@@ -1400,6 +1404,9 @@ class ofp_action_strip_vlan (object):
     outstr += prefix + 'type: ' + str(self.type) + '\n'
     outstr += prefix + 'len: ' + str(len(self)) + '\n'
     return outstr
+
+  def __repr__(self):
+    return "ofp_action_strip_vlan"
 
 class ofp_action_vlan_vid (object):
   def __init__ (self, **kw):
@@ -1445,6 +1452,9 @@ class ofp_action_vlan_vid (object):
     outstr += prefix + 'len: ' + str(self.length) + '\n'
     outstr += prefix + 'vlan_vid: ' + str(self.vlan_vid) + '\n'
     return outstr
+
+  def __repr__(self):
+    return "ofp_action_vlan_vid(vid=%d)" % self.vlan_vid
 
 class ofp_action_vlan_pcp (object):
   def __init__ (self, **kw):
@@ -4062,8 +4072,8 @@ _init()
 # Fill in the action-to-class table
 #TODO: Use the factory functions?
 _action_map.update({
-  #TODO: special type for OFPAT_STRIP_VLAN?
   OFPAT_OUTPUT                   : ofp_action_output,
+  OFPAT_STRIP_VLAN               : ofp_action_strip_vlan,
   OFPAT_SET_VLAN_VID             : ofp_action_vlan_vid,
   OFPAT_SET_VLAN_PCP             : ofp_action_vlan_pcp,
   OFPAT_SET_DL_SRC               : ofp_action_dl_addr,
@@ -4081,7 +4091,7 @@ _action_map.update({
   OFPAT_SET_MPLS_TTL             : ofp_action_mpls_ttl,
   OFPAT_DEC_MPLS_TTL             : ofp_action_mpls_dec_ttl,
   OFPAT_RESUBMIT                 : ofp_action_resubmit
-  
+
 })
 
 # Values from macro definitions
