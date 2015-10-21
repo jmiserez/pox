@@ -564,32 +564,48 @@ class Main(EventMixin):
     self.log.info("XXX V3 Consistent Update with barriers")
     vlan = 0x111
     # Untagging at F1
-    untag_unkown_on_f1 = lambda: self.handlers[f1].untag_packet(nw_src=host_ips[unknown], nw_dst=host_ips[service1], output_port=fs_ports[monitor], value=vlan)
+    untag_unkown_on_f1 = \
+      lambda: self.handlers[f1].untag_packet(nw_src=host_ips[unknown],
+                                             nw_dst=host_ips[service1],
+                                             output_port=fs_ports[monitor],
+                                             value=vlan)
     barr1 = get_barrier_msg()
     req_barr1 =lambda: self.handlers[f1].connection.send(barr1)
 
     # Untagging at F2
-    untag_guest_on_f2 = lambda: self.handlers[f2].untag_packet(nw_src=host_ips[guest], nw_dst=host_ips[service1], output_port=fs_ports[internet], value=vlan)
+    untag_guest_on_f2 = \
+      lambda: self.handlers[f2].untag_packet(nw_src=host_ips[guest],
+                                             nw_dst=host_ips[service1],
+                                             output_port=fs_ports[internet],
+                                             value=vlan)
     barr2 = get_barrier_msg()
     req_barr2 =lambda: self.handlers[f2].connection.send(barr2)
 
     # Tagging Guest -> Service1 on internal switch
-    tag_unknown_on_i = lambda: self.handlers[internal].tag_packet(src=unknown, dst=service1, outport=internal_ports[f1], value=vlan)
+    tag_unknown_on_i = \
+      lambda: self.handlers[internal].tag_packet(src=unknown, dst=service1,
+                                                 outport=internal_ports[f1],
+                                                 value=vlan)
     barr3 = get_barrier_msg()
     req_barr3 =lambda: self.handlers[internal].connection.send(barr3)
 
     # Tagging Unkown -> Service1 on internal switch
-    tag_guest_on_i = lambda: self.handlers[internal].tag_packet(src=guest, dst=service1, outport=internal_ports[f2], value=vlan)
+    tag_guest_on_i = \
+      lambda: self.handlers[internal].tag_packet(src=guest, dst=service1,
+                                                 outport=internal_ports[f2],
+                                                 value=vlan)
     barr4 = get_barrier_msg()
     req_barr4 =lambda: self.handlers[internal].connection.send(barr4)
 
     # Remove pervious monitor rule from F1
-    remove_monitor_f1 = lambda: self.handlers[f1].remove_redirect_service(host_ips[service1])
+    remove_monitor_f1 = \
+      lambda: self.handlers[f1].remove_redirect_service(host_ips[service1])
     # Remove pervious monitor rule from F2
-    remove_monitor_f2 = lambda: self.handlers[f2].remove_redirect_service(host_ips[service1])
+    remove_monitor_f2 = \
+      lambda: self.handlers[f2].remove_redirect_service(host_ips[service1])
 
-    #remove_monitor_f1 = lambda: None
-    #remove_monitor_f2 = lambda: None
+    remove_monitor_f1 = lambda: None
+    remove_monitor_f2 = lambda: None
 
     waiting_calls[barr1.xid] = [tag_unknown_on_i, req_barr3]
     waiting_calls[barr2.xid] = [tag_guest_on_i, req_barr4]
@@ -598,9 +614,7 @@ class Main(EventMixin):
 
     untag_unkown_on_f1()
     untag_guest_on_f2()
-    self.slow_update_sleep()
-    req_barr1()
-    req_barr2()
+    self.slow_update_sleep(lambda: req_barr1(), req_barr2)
 
   def v3_inconsistent_update(self):
     self.log.info("XXX V3 Inconsistent Update with barriers")
