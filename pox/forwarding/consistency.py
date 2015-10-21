@@ -154,6 +154,13 @@ class InternalSwitch(EventMixin):
     self.log = core.getLogger(self.__class__.__name__)
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
+    self.traffic_map = {}
+    """
+    # Fill the internal traffic map
+    for src in internal_hosts:
+      for dst in internet_hosts:
+        self.traffic_map[src] = host_ports[dst]
+    """
     self.log.debug("Initialized Internal Switch")
 
   def install_internal(self):
@@ -167,11 +174,30 @@ class InternalSwitch(EventMixin):
       self.connection.send(msg)
 
   def redirect_traffic(self, src, port, priority=100):
+    self.traffic_map[src] = port
     msg = of.ofp_flow_mod()
     msg.match = of.ofp_match(dl_src=src)
     msg.actions.append(of.ofp_action_output(port=port))
     msg.priority = priority
     self.log.info("Redirect Traffic from src='%s' to port: %d" % (src, port))
+    self.connection.send(msg)
+
+  def remove_redirect_traffic(self, src):
+    msg = of.ofp_flow_mod(command=of.OFPFC_DELETE)
+    msg.match = of.ofp_match(dl_type=0x0800, dl_src=src)
+    self.log.info("Removing flow mod with dl_src='%s'", src)
+    self.connection.send(msg)
+
+  def tag_packet(self, src, dst, outport, value, priority=100):
+    """
+    Tag a packet from a Eth src to Eth dst with vlan value
+    """
+    msg = of.ofp_flow_mod()
+    msg.match = of.ofp_match(dl_type=0x8000, dl_src=src, dl_dst=dst)
+    msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=value))
+    msg.actions.append(of.ofp_action_output(port=outport))
+    msg.priority = priority
+    self.log.info("Tagging packets with VLAN='0%x", value)
     self.connection.send(msg)
 
   def install_v1(self):
@@ -214,10 +240,12 @@ class FSwitch(EventMixin):
     self.connection = connection
     self.deny = deny
     self.dpid = dpid
+    self.traffic_map = {}
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
 
   def redirect_serivce(self, ip, port, priority=1000):
+    self.traffic_map[ip] = port
     msg = of.ofp_flow_mod()
     msg.match = of.ofp_match(dl_type=0x0800, nw_dst=ip)
     msg.actions.append(of.ofp_action_output(port=port))
@@ -231,6 +259,12 @@ class FSwitch(EventMixin):
     msg.match = of.ofp_match(dl_type=0x0800, nw_dst=ip)
     msg.priority = priority
     self.log.info("Denying Service to src='%s'" % (ip,))
+    self.connection.send(msg)
+
+  def remove_redirect_service(self, ip):
+    msg = of.ofp_flow_mod(command=of.OFPFC_DELETE)
+    msg.match = of.ofp_match(dl_type=0x0800, nw_dst=ip)
+    self.log.info("Removing flow mod with nw_dst='%s'", ip)
     self.connection.send(msg)
 
   def monitor_service(self, ip):
@@ -262,6 +296,29 @@ class FSwitch(EventMixin):
 
     self.connection.send(internal_msg)
     self.connection.send(internet_msg)
+
+  def tag_packet(self, nw_src, nw_dst, output_port, value):
+    """
+    Tag a packet from a Eth src to Eth dst with vlan value
+    """
+    print self.traffic_map
+    msg = of.ofp_flow_mod()
+    msg.match = of.ofp_match(dl_type=0x8000, nw_src=nw_src, nw_dst=nw_dst)
+    msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=value))
+    msg.actions.append(of.ofp_action_output(port=output_port))
+    self.log.info("Tagging packets with VLAN='0%x", value)
+    self.connection.send(msg)
+
+  def untag_packet(self, nw_src, nw_dst, output_port, value):
+    """
+    Remove tag from packet and output to a switch in fs_ports
+    """
+    msg = of.ofp_flow_mod()
+    msg.match = of.ofp_match(dl_type=0x8000, nw_dst=nw_dst)
+    msg.actions.append(of.ofp_action_strip_vlan())
+    msg.actions.append(of.ofp_action_output(port=output_port))
+    self.log.info("Untagging packets with VLAN='0%x", value)
+    self.connection.send(msg)
 
   def _handle_BarrierIn(self, event):
     self.log.info("BARRIER REPLY: xid=%s", event.xid)
@@ -411,6 +468,7 @@ class Main(EventMixin):
     self.deny = deny
     self._all_connected = False
     self.use_barriers = use_barriers
+    self.last_version = 0
     self.listenTo(core.openflow)
 
   def slow_update_sleep(self):
@@ -418,8 +476,8 @@ class Main(EventMixin):
     time.sleep(self.consistent_sleep)
     self.log.info("Just woke up from slow update")
 
-  def incosnsitent_update_barriers(self):
-    self.log.info("XXX Inconsistent Update with barriers")
+  def v2_incosnsitent_update_barriers(self):
+    self.log.info("XXX V2 Inconsistent Update with barriers")
     # Prepare the update requests and the barriers
     redir_guest_to_f2 = lambda: self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
     barr1 = get_barrier_msg()
@@ -442,7 +500,7 @@ class Main(EventMixin):
     redir_guest_to_f2()
     req_barr1()
 
-  def inconsistent_update_wait(self):
+  def v2_inconsistent_update_wait(self):
     self.log.info("XXX Inconsistent Update")
     # 1- Redirect guest to F2
     self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
@@ -454,7 +512,7 @@ class Main(EventMixin):
     self.log.info("Just woke up from slow update")
     self.handlers[f2].monitor_service(host_ips[service1])
 
-  def consistent_update_barriers(self):
+  def v2_consistent_update_barriers(self):
     self.log.info("XXX Consistent Update with barriers")
     # Prepare the update requests and the barriers
 
@@ -488,7 +546,7 @@ class Main(EventMixin):
     redir_student_to_f3()
     req_barr1()
 
-  def consistent_update_wait(self):
+  def v2_consistent_update_wait(self):
     self.log.info("XXX Consistent Update")
     # From the paper
     # 1- Update I to forward S traffic to F3, while continuing to
@@ -508,21 +566,116 @@ class Main(EventMixin):
     self.log.info("Woke up after %d secs", self.consistent_sleep)
     self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
 
-  def update_version(self):
-    self.log.info("XXX Update version triggered")
-    #self.incosnsitent_update_barriers()
-    #return
+  def v3_consistent_update_barriers(self):
+    self.log.info("XXX V3 Consistent Update with barriers")
+    vlan = 0x111
+    # Untagging at F1
+    untag_unkown_on_f1 = lambda: self.handlers[f1].untag_packet(nw_src=host_ips[unknown], nw_dst=host_ips[service1], output_port=fs_ports[monitor], value=vlan)
+    barr1 = get_barrier_msg()
+    req_barr1 =lambda: self.handlers[f1].connection.send(barr1)
 
+    # Untagging at F2
+    untag_guest_on_f2 = lambda: self.handlers[f2].untag_packet(nw_src=host_ips[guest], nw_dst=host_ips[service1], output_port=fs_ports[internet], value=vlan)
+    barr2 = get_barrier_msg()
+    req_barr2 =lambda: self.handlers[f2].connection.send(barr2)
+
+    # Tagging Guest -> Service1 on internal switch
+    tag_unknown_on_i = lambda: self.handlers[internal].tag_packet(src=unknown, dst=service1, outport=internal_ports[f1], value=vlan)
+    barr3 = get_barrier_msg()
+    req_barr3 =lambda: self.handlers[internal].connection.send(barr3)
+
+    # Tagging Unkown -> Service1 on internal switch
+    tag_guest_on_i = lambda: self.handlers[internal].tag_packet(src=guest, dst=service1, outport=internal_ports[f2], value=vlan)
+    barr4 = get_barrier_msg()
+    req_barr4 =lambda: self.handlers[internal].connection.send(barr4)
+
+    # Remove pervious monitor rule from F1
+    remove_monitor_f1 = lambda: self.handlers[f1].remove_redirect_service(host_ips[service1])
+    # Remove pervious monitor rule from F2
+    remove_monitor_f2 = lambda: self.handlers[f2].remove_redirect_service(host_ips[service1])
+
+    #remove_monitor_f1 = lambda: None
+    #remove_monitor_f2 = lambda: None
+
+    waiting_calls[barr1.xid] = [tag_unknown_on_i, req_barr3]
+    waiting_calls[barr2.xid] = [tag_guest_on_i, req_barr4]
+    waiting_calls[barr3.xid] = [remove_monitor_f1]
+    waiting_calls[barr4.xid] = [remove_monitor_f2]
+
+    untag_unkown_on_f1()
+    untag_guest_on_f2()
+    self.slow_update_sleep()
+    req_barr1()
+    req_barr2()
+
+
+  def v3_inconsistent_update(self):
+    self.log.info("XXX V3 Inconsistent Update with barriers")
+    vlan = 0x111
+    # Tagging Guest -> Service1 on internal switch
+    self.handlers[internal].tag_packet(src=unknown, dst=service1, outport=internal_ports[f1], value=vlan)
+
+    # Tagging Unkown -> Service1 on internal switch
+    self.handlers[internal].tag_packet(src=guest, dst=service1, outport=internal_ports[f2], value=vlan)
+
+    # Remove pervious monitor rule from F1
+    self.handlers[f1].remove_redirect_service(host_ips[service1])
+    # Remove pervious monitor rule from F2
+    self.handlers[f2].remove_redirect_service(host_ips[service1])
+
+    def after_time():
+      # Untagging at F1
+      self.handlers[f1].untag_packet(nw_src=host_ips[unknown], nw_dst=host_ips[service1], output_port=fs_ports[monitor], value=vlan)
+
+      # Untagging at F2
+      self.handlers[f2].untag_packet(nw_src=host_ips[guest], nw_dst=host_ips[service1], output_port=fs_ports[monitor], value=vlan)
+
+    self.timer = Timer(self.consistent_sleep, after_time, recurring=False)
+
+
+  def install_v2(self):
+    self.log.info("Installing V2")
     if self.consistent:
       if self.use_barriers:
-        self.consistent_update_barriers()
+        self.v2_consistent_update_barriers()
       else:
-        self.consistent_update_wait()
+        self.v2_consistent_update_wait()
     else:
       if self.use_barriers:
-        self.incosnsitent_update_barriers()
+        self.v2_incosnsitent_update_barriers()
       else:
-        self.inconsistent_update_wait()
+        self.v2_inconsistent_update_wait()
+
+  def install_v3(self):
+    self.log.info("XXX Consistent Update V3 with barriers")
+    #untag_f2 = lambda : self.handlers[f2].untag_packet(guest, host_ips[service2])
+    #untag_f2 = lambda : self.handlers[f2].untag_packet(guest, host_ips[service2])
+    """
+    self.handlers[f2].untag_packet(host_ips[guest], host_ips[service1], 100)
+    self.handlers[f2].untag_packet(host_ips[unknown], host_ips[service1], 100)
+    self.handlers[internal].tag_packet(guest, service1, 100)
+    self.handlers[internal].tag_packet(unknown, service1, 100)
+    """
+    #self.v3_inconsistent_update()
+    self.v3_consistent_update_barriers()
+
+
+  def install_v4(self):
+    pass
+
+  def update_version(self):
+    self.log.info("XXX Update version triggered, last version is '%d'", self.last_version)
+    if self.last_version == 0:
+      pass
+      # TODO(AH): move installing v1 to here
+    elif self.last_version == 1:
+      self.install_v2()
+      self.last_version = 2
+    elif self.last_version == 2:
+      self.install_v3()
+      self.last_version = 3
+    else:
+      self.log.error("No version defined after version: %d", self.last_version)
 
   def _handle_ConnectionUp (self, event):
     log.debug("Connection %s", event.connection)
@@ -554,6 +707,7 @@ class Main(EventMixin):
     else:
       log.error("Unkown switch with dpid %s", dpid)
 
+    self.last_version = 1
     # Wait for all switches to get connected before starting the update timer
     connected = set(list(self.handlers.iterkeys()))
     all = set([internal, f1, f2, f3, internet, monitor])
