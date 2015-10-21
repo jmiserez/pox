@@ -92,21 +92,21 @@ class InternetSwitch(EventMixin):
     # We want to hear PacketIn messages, so we listen
     self.listenTo(connection)
 
-  def install_internal(self):
+  def install_internal(self, priorty=1000):
     """Allow internal switches to talk to each others"""
     for src in internet_hosts:
       for dst in internet_hosts:
         msg = of.ofp_flow_mod()
         msg.match = of.ofp_match(dl_src=src, dl_dst=dst)
-        msg.priority = 1000
+        msg.priority = priorty
         msg.actions.append(of.ofp_action_output(port=host_ports[dst]))
         self.connection.send(msg)
 
-  def install_to_services(self):
+  def install_to_services(self, priorty=100):
     for host in internet_hosts:
       ip_msg = of.ofp_flow_mod()
       ip_msg.match = of.ofp_match(dl_type=0x0800, nw_dst=host_ips[host])
-      ip_msg.priority = 1000
+      ip_msg.priority = priorty
       ip_msg.actions.append(of.ofp_action_output(port=host_ports[host]))
       self.connection.send(ip_msg)
 
@@ -160,12 +160,12 @@ class InternalSwitch(EventMixin):
     """
     self.log.debug("Initialized Internal Switch")
 
-  def install_internal(self):
+  def install_internal(self, priority=1000):
     """Allow internal switches to talk to each others"""
     for host in internal_hosts:
       msg = of.ofp_flow_mod()
       msg.match = of.ofp_match(dl_dst=host)
-      msg.priority = 1000
+      msg.priority = priority
       msg.actions.append(of.ofp_action_output(port=host_ports[host]))
       self.log.debug("Installing v1 rule: %s", str(msg).replace("\n", " "))
       self.connection.send(msg)
