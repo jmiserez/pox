@@ -124,10 +124,6 @@ class InternetSwitch(EventMixin):
     self.install_to_services()
     self.all_to_f2()
 
-  def install_v2(self):
-    """No change"""
-    self.install_v1()
-
   def _handle_PacketIn (self, event):
     """
     Handles packet in messages from the switch to implement above algorithm.
@@ -206,14 +202,6 @@ class InternalSwitch(EventMixin):
     self.redirect_traffic(faculty, internal_ports[f3])
     self.redirect_traffic(student, internal_ports[f2])
     self.redirect_traffic(guest, internal_ports[f1])
-    self.redirect_traffic(unknown, internal_ports[f1])
-
-  def install_v2(self):
-    self.log.info("Installing v2")
-    self.install_internal()
-    self.redirect_traffic(faculty, internal_ports[f3])
-    self.redirect_traffic(student, internal_ports[f3])
-    self.redirect_traffic(guest, internal_ports[f2])
     self.redirect_traffic(unknown, internal_ports[f1])
 
   def _handle_PacketIn (self, event):
@@ -343,11 +331,6 @@ class F1Switch(FSwitch):
     self.monitor_service(host_ips[service1])
     self.allow_all()
 
-  def install_v2(self):
-    self.log.info("Installing v2")
-    # Nothing changed!
-    pass
-
   def _handle_PacketIn (self, event):
     """
     Handles packet in messages from the switch to implement above algorithm.
@@ -366,11 +349,6 @@ class F2Switch(FSwitch):
     self.log.info("Installing v2")
     self.allow_all()
 
-  def install_v2(self):
-    self.log.info("Installing v2")
-    # Service1 Rules
-    self.monitor_service(host_ips[service1])
-
   def _handle_PacketIn (self, event):
     """
     Handles packet in messages from the switch to implement above algorithm.
@@ -388,10 +366,6 @@ class F3Switch(FSwitch):
   def install_v1(self):
     self.log.info("Installing v1")
     self.allow_all()
-
-  def install_v2(self):
-    self.log.info("Installing v2")
-    # Nothing changed
 
   def _handle_PacketIn (self, event):
     """
@@ -430,10 +404,6 @@ class MonitorSwitch(EventMixin):
     self.connection.send(f1_msg)
     self.connection.send(f2_msg)
     self.connection.send(f3_msg)
-
-  def install_v2(self):
-    self.log.info("installing v2")
-    # Nothing changed
 
   def _handle_PacketIn (self, event):
     """
