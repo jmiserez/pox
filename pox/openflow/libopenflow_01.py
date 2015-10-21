@@ -1361,6 +1361,46 @@ class ofp_action_pop_mpls (object):
     outstr += prefix + 'ethertype: ' + str(self.ethertype) + '\n'
     return outstr
 
+#@openflow_action('OFPAT_STRIP_VLAN', 3)
+class ofp_action_strip_vlan (object):
+  def __init__ (self):
+    self.type = OFPAT_STRIP_VLAN
+    self.length = 8
+    #self.vlan_vid = 0
+
+  def _assert (self):
+    return (True, None)
+
+  def pack (self, assertstruct = True):
+    if (assertstruct):
+      if not (self._assert()[0]):
+        return None
+      packed = struct.pack("!HHi", self.type, self.length, 0)
+      return packed
+
+  def unpack (self, raw, offset=0):
+    _offset = offset
+    offset,(self.type, length) = _unpack("!HH", raw, offset)
+    offset = _skip(raw, offset, 4)
+    assert offset - _offset == len(self)
+    return offset
+
+  @staticmethod
+  def __len__ ():
+    return 8
+
+  def __eq__ (self, other):
+    if type(self) != type(other): return False
+    if self.type != other.type: return False
+    if len(self) != len(other): return False
+    return True
+
+  def show (self, prefix=''):
+    outstr = ''
+    outstr += prefix + 'type: ' + str(self.type) + '\n'
+    outstr += prefix + 'len: ' + str(len(self)) + '\n'
+    return outstr
+
 class ofp_action_vlan_vid (object):
   def __init__ (self, **kw):
     self.type = OFPAT_SET_VLAN_VID
