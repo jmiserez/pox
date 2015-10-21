@@ -185,16 +185,16 @@ class InternalSwitch(EventMixin):
     self.log.info("Removing flow mod with dl_src='%s'", src)
     self.connection.send(msg)
 
-  def tag_packet(self, src, dst, outport, value, priority=100):
+  def tag_packet(self, src, dst, outport, vid, priority=1100):
     """
     Tag a packet from a Eth src to Eth dst with vlan value
     """
     msg = of.ofp_flow_mod()
-    msg.match = of.ofp_match(dl_type=0x8000, dl_src=src, dl_dst=dst)
-    msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=value))
+    msg.match = of.ofp_match(dl_type=0x0800, dl_src=src, dl_dst=dst)
+    msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=vid))
     msg.actions.append(of.ofp_action_output(port=outport))
     msg.priority = priority
-    self.log.info("Tagging packets with VLAN='0x%x'", value)
+    self.log.info("Tagging packets with VLAN='0x%x', src='%s', and dst='%s", vid, str(src), str(dst))
     self.connection.send(msg)
 
   def install_v1(self):
@@ -286,27 +286,29 @@ class FSwitch(EventMixin):
     self.connection.send(internal_msg)
     self.connection.send(internet_msg)
 
-  def tag_packet(self, nw_src, nw_dst, output_port, value):
+  def tag_packet(self, nw_src, nw_dst, output_port, vid, priority=1100):
     """
-    Tag a packet from a Eth src to Eth dst with vlan value
+    Tag a packet from a Eth src to Eth dst with vlan ID
     """
-    print self.traffic_map
     msg = of.ofp_flow_mod()
-    msg.match = of.ofp_match(dl_type=0x8000, nw_src=nw_src, nw_dst=nw_dst)
-    msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=value))
+    msg.match = of.ofp_match(dl_type=0x0800, nw_src=nw_src, nw_dst=nw_dst)
+    msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=vid))
     msg.actions.append(of.ofp_action_output(port=output_port))
-    self.log.info("Tagging packets with VLAN='0x%x'", value)
+    msg.priority = priority
+    self.log.info("Tagging packets with VLAN='0x%x'", vid)
+    self.log.info("Tagging packets with VLAN='0x%x', src='%s', and dst=%s", vid, str(nw_src), str(nw_dst))
     self.connection.send(msg)
 
-  def untag_packet(self, nw_src, nw_dst, output_port, value):
+  def untag_packet(self, nw_src, nw_dst, output_port, vid, priority=1100):
     """
     Remove tag from packet and output to a switch in fs_ports
     """
     msg = of.ofp_flow_mod()
-    msg.match = of.ofp_match(dl_type=0x8000, nw_dst=nw_dst)
+    msg.match = of.ofp_match(dl_type=0x0800, nw_dst=nw_dst)
     msg.actions.append(of.ofp_action_strip_vlan())
     msg.actions.append(of.ofp_action_output(port=output_port))
-    self.log.info("Untagging packets with VLAN='0x%x'", value)
+    msg.priority = priority
+    self.log.info("Untagging packets with VLAN='0x%x' and dst=%s", vid, str(nw_dst))
     self.connection.send(msg)
 
   def _handle_BarrierIn(self, event):
@@ -568,7 +570,7 @@ class Main(EventMixin):
       lambda: self.handlers[f1].untag_packet(nw_src=host_ips[unknown],
                                              nw_dst=host_ips[service1],
                                              output_port=fs_ports[monitor],
-                                             value=vlan)
+                                             vid=vlan)
     barr1 = get_barrier_msg()
     req_barr1 =lambda: self.handlers[f1].connection.send(barr1)
 
@@ -576,24 +578,24 @@ class Main(EventMixin):
     untag_guest_on_f2 = \
       lambda: self.handlers[f2].untag_packet(nw_src=host_ips[guest],
                                              nw_dst=host_ips[service1],
-                                             output_port=fs_ports[internet],
-                                             value=vlan)
+                                             output_port=fs_ports[monitor],
+                                             vid=vlan)
     barr2 = get_barrier_msg()
     req_barr2 =lambda: self.handlers[f2].connection.send(barr2)
 
-    # Tagging Guest -> Service1 on internal switch
+    # Tagging Unknown -> Service1 on internal switch
     tag_unknown_on_i = \
       lambda: self.handlers[internal].tag_packet(src=unknown, dst=service1,
                                                  outport=internal_ports[f1],
-                                                 value=vlan)
+                                                 vid=vlan)
     barr3 = get_barrier_msg()
     req_barr3 =lambda: self.handlers[internal].connection.send(barr3)
 
-    # Tagging Unkown -> Service1 on internal switch
+    # Tagging Guest -> Service1 on internal switch
     tag_guest_on_i = \
       lambda: self.handlers[internal].tag_packet(src=guest, dst=service1,
                                                  outport=internal_ports[f2],
-                                                 value=vlan)
+                                                 vid=vlan)
     barr4 = get_barrier_msg()
     req_barr4 =lambda: self.handlers[internal].connection.send(barr4)
 
@@ -614,16 +616,21 @@ class Main(EventMixin):
 
     untag_unkown_on_f1()
     untag_guest_on_f2()
-    self.slow_update_sleep(lambda: req_barr1(), req_barr2)
+
+    def barriers():
+      req_barr1()
+      req_barr2()
+
+    self.slow_update_sleep(barriers)
 
   def v3_inconsistent_update(self):
     self.log.info("XXX V3 Inconsistent Update with barriers")
     vlan = 0x111
     # Tagging Guest -> Service1 on internal switch
-    self.handlers[internal].tag_packet(src=unknown, dst=service1, outport=internal_ports[f1], value=vlan)
+    self.handlers[internal].tag_packet(src=unknown, dst=service1, outport=internal_ports[f1], vid=vlan)
 
     # Tagging Unkown -> Service1 on internal switch
-    self.handlers[internal].tag_packet(src=guest, dst=service1, outport=internal_ports[f2], value=vlan)
+    self.handlers[internal].tag_packet(src=guest, dst=service1, outport=internal_ports[f2], vid=vlan)
 
     # Remove pervious monitor rule from F1
     self.handlers[f1].remove_redirect_service(host_ips[service1])
@@ -632,10 +639,10 @@ class Main(EventMixin):
 
     def after_time():
       # Untagging at F1
-      self.handlers[f1].untag_packet(nw_src=host_ips[unknown], nw_dst=host_ips[service1], output_port=fs_ports[monitor], value=vlan)
+      self.handlers[f1].untag_packet(nw_src=host_ips[unknown], nw_dst=host_ips[service1], output_port=fs_ports[monitor], vid=vlan)
 
       # Untagging at F2
-      self.handlers[f2].untag_packet(nw_src=host_ips[guest], nw_dst=host_ips[service1], output_port=fs_ports[monitor], value=vlan)
+      self.handlers[f2].untag_packet(nw_src=host_ips[guest], nw_dst=host_ips[service1], output_port=fs_ports[monitor], vid=vlan)
 
     self.timer = Timer(self.consistent_sleep, after_time, recurring=False)
 
