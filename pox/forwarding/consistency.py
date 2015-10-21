@@ -8,6 +8,7 @@ from pox.lib.addresses import IPAddr
 from pox.lib.recoco.recoco import Timer
 import time
 from itertools import count
+from functools import partial
 
 
 log = core.getLogger()
@@ -428,23 +429,48 @@ class Main(EventMixin):
   Waits for OpenFlow switches to connect and makes them learning switches.
   """
   def __init__ (self, consistent=True, update_wait=5, update_once=True,
-                consistent_sleep=5, deny=False, use_barriers=True):
+                consistent_wait=5, deny=False, use_barriers=True,
+                in_flight_wait=5, slow_update_wait=5):
     self.log = core.getLogger("Main")
     self.handlers = {}
     self.consistent = consistent
     self.update_wait = update_wait
     self.update_once = update_once
-    self.consistent_sleep = consistent_sleep
+    self.consistent_wait = consistent_wait
     self.deny = deny
-    self._all_connected = False
     self.use_barriers = use_barriers
+    self.in_flight_wait = in_flight_wait
+    self.slow_update_wait = slow_update_wait
+    self._all_connected = False
     self.last_version = 0
     self.listenTo(core.openflow)
 
-  def slow_update_sleep(self):
-    self.log.info("Sleeping to simulate slow update")
-    time.sleep(self.consistent_sleep)
-    self.log.info("Just woke up from slow update")
+  def slow_update_sleep(self, fn, *args, **kwargs):
+    self.log.info("Sleeping for '%d' secs to simulate slow update",
+                  self.slow_update_wait)
+    def wrapper(*ags, **kw):
+      self.log.info("Woke up from simulating slow update.")
+      fn(*ags, **kw)
+
+    Timer(self.slow_update_wait, wrapper, *args, kw=kwargs, recurring=False)
+
+  def consistent_update_sleep(self, fn, *args, **kwargs):
+    self.log.info("Sleeping for '%d' secs to make sure writes are committed",
+                  self.consistent_wait)
+    def wrapper(*ags, **kw):
+      self.log.info("Woke up from waiting for writes to committed.")
+      fn(*ags, **kw)
+
+    Timer(self.consistent_wait, wrapper, args=args, kw=kwargs, recurring=False)
+
+  def in_flight_sleep(self, fn, *args, **kwargs):
+    self.log.info("Sleeping for '%d' secs to make sure packets existed the link",
+                  self.in_flight_wait)
+    def wrapper(*ags, **kw):
+      self.log.info("Woke up from waiting for in flight packets.")
+      fn(*ags, **kw)
+
+    Timer(self.in_flight_wait, wrapper, args=args, kw=kwargs, recurring=False)
 
   def v2_incosnsitent_update_barriers(self):
     self.log.info("XXX V2 Inconsistent Update with barriers")
@@ -456,15 +482,16 @@ class Main(EventMixin):
     redir_student_to_f3 = lambda: self.handlers[internal].redirect_traffic(student, internal_ports[f3])
     barr2 = get_barrier_msg()
     req_barr2 = lambda: self.handlers[internal].connection.send(barr2)
-    slow_update = lambda: self.slow_update_sleep()
 
     monitor_on_f2 = lambda: self.handlers[f2].monitor_service(host_ips[service1])
     barr3 = get_barrier_msg()
     req_barr3 = lambda: self.handlers[f2].connection.send(barr3)
 
     # Prepare the update sequence
-    waiting_calls[barr1.xid] = [redir_student_to_f3, req_barr2, slow_update]
-    waiting_calls[barr2.xid] = [monitor_on_f2, req_barr3]
+    waiting_calls[barr1.xid] = [redir_student_to_f3, req_barr2]
+    waiting_calls[barr2.xid] = [partial(self.slow_update_sleep, monitor_on_f2),
+                                partial(self.slow_update_sleep, req_barr3)]
+    waiting_calls[barr3.xid] = [lambda: self.log.info("Update to V2 is completed!")]
 
     # Start the update process
     redir_guest_to_f2()
@@ -477,10 +504,8 @@ class Main(EventMixin):
     # 2- Redirect students to F3
     self.handlers[internal].redirect_traffic(student, internal_ports[f3])
     # 3- Monitor traffic to service1 on F2
-    self.log.info("Sleeping to simulate slow update")
-    time.sleep(self.consistent_sleep)
-    self.log.info("Just woke up from slow update")
-    self.handlers[f2].monitor_service(host_ips[service1])
+    monitor = lambda: self.handlers[f2].monitor_service(host_ips[service1])
+    self.slow_update_sleep(monitor)
 
   def v2_consistent_update_barriers(self):
     self.log.info("XXX Consistent Update with barriers")
@@ -494,7 +519,7 @@ class Main(EventMixin):
     req_barr1 = lambda: self.handlers[internal].connection.send(barr1)
 
     # 2- Wait until in-flight packets have been processed by F2.
-    wait_in_flight = lambda: self.slow_update_sleep()
+    #wait_in_flight = lambda: self.slow_update_sleep()
 
     # 3- Update F2 to deny SSH packets.
     monitor_on_f2 = lambda: self.handlers[f2].monitor_service(host_ips[service1])
@@ -509,8 +534,10 @@ class Main(EventMixin):
     req_barr3 = lambda: self.handlers[internal].connection.send(barr3)
 
     # Prepare the update sequence
-    waiting_calls[barr1.xid] = [wait_in_flight, monitor_on_f2, req_barr2]
+    waiting_calls[barr1.xid] = [partial(self.in_flight_sleep, monitor_on_f2),
+                                partial(self.in_flight_sleep, req_barr2)]
     waiting_calls[barr2.xid] = [redir_guest_to_f2, req_barr3]
+    waiting_calls[barr3.xid] = [lambda : self.log.info("V2 update is completed!")]
 
     # Start the update process
     redir_student_to_f3()
@@ -522,19 +549,16 @@ class Main(EventMixin):
     # 1- Update I to forward S traffic to F3, while continuing to
     #    forward U and G traffic to F1 and F traffic to F3.
     self.handlers[internal].redirect_traffic(student, internal_ports[f3])
+
     # 2- Wait until in-flight packets have been processed by F2.
-    self.log.info("Sleeping for %d secs", self.consistent_sleep)
-    time.sleep(self.consistent_sleep)
-    self.log.info("Woke up after %d secs", self.consistent_sleep)
-    # 3- Update F2 to deny SSH packets.
-    self.handlers[f2].monitor_service(host_ips[service1])
-    #self.handlers[f2].redirect_serivce(host_ips[service1], fs_ports[monitor])
-    # 4- Update I to forward G traffic to F2, while continuing to
-    #    forward U traffic to F1 and S and F traffic to F3.
-    self.log.info("Sleeping for %d secs", self.consistent_sleep)
-    time.sleep(5)
-    self.log.info("Woke up after %d secs", self.consistent_sleep)
-    self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
+    monitor = lambda: self.handlers[f2].monitor_service(host_ips[service1])
+    redirect = lambda: self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
+
+    def monitor_then_redirect():
+      monitor()
+      self.slow_update_sleep(redirect)
+
+    self.in_flight_sleep(monitor_then_redirect)
 
   def v3_consistent_update_barriers(self):
     self.log.info("XXX V3 Consistent Update with barriers")
@@ -578,7 +602,6 @@ class Main(EventMixin):
     req_barr1()
     req_barr2()
 
-
   def v3_inconsistent_update(self):
     self.log.info("XXX V3 Inconsistent Update with barriers")
     vlan = 0x111
@@ -601,7 +624,6 @@ class Main(EventMixin):
       self.handlers[f2].untag_packet(nw_src=host_ips[guest], nw_dst=host_ips[service1], output_port=fs_ports[monitor], value=vlan)
 
     self.timer = Timer(self.consistent_sleep, after_time, recurring=False)
-
 
   def install_v2(self):
     self.log.info("Installing V2")
@@ -628,7 +650,6 @@ class Main(EventMixin):
     """
     #self.v3_inconsistent_update()
     self.v3_consistent_update_barriers()
-
 
   def install_v4(self):
     pass
@@ -689,14 +710,31 @@ class Main(EventMixin):
 
 
 def launch (consistent=True, update_wait=5, update_once=True,
-            consistent_sleep=5, deny=False, barriers=True):
+            consistent_wait=5, deny=False, barriers=True, in_flight_wait=5,
+            slow_update_wait=5):
   """
   Starts an L2 learning switch.
+
+  :param consistent: If True a consistent update will be used
+  :param update_wait: The amount of time before triggering version update
+  :param update_once: If True only one update will be performed
+  :param consistent_wait: How time to sleep to ensure consistency in algorithms
+                           rely on timer to make sure the writes are committed.
+  :param deny: If true filtered packets will be denied. Otherwise it will be
+               sent to the monitoring switch.
+  :param barriers: If true barriers will be used to make sure the writes are
+                   comitted. Otherwise wait is used.
+  :param in_flight_wait: the amount of time to wait for in flight packets
+                         between two switches.
+  :param slow_update_wait: time to wait before issuing the next flowMod to
+                          simulate slow controller.
   """
+
   core.registerNew(Main, consistent=str_to_bool(consistent),
                    update_wait=int(update_wait),
                    update_once=str_to_bool(update_once),
-                   consistent_sleep=int(consistent_sleep),
+                   consistent_wait=int(consistent_wait),
                    deny=str_to_bool(deny),
-                   use_barriers=str_to_bool(barriers))
-
+                   use_barriers=str_to_bool(barriers),
+                   in_flight_wait=int(in_flight_wait),
+                   slow_update_wait=int(slow_update_wait))
