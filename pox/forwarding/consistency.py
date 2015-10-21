@@ -194,7 +194,7 @@ class InternalSwitch(EventMixin):
     msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=value))
     msg.actions.append(of.ofp_action_output(port=outport))
     msg.priority = priority
-    self.log.info("Tagging packets with VLAN='0%x", value)
+    self.log.info("Tagging packets with VLAN='0x%x'", value)
     self.connection.send(msg)
 
   def install_v1(self):
@@ -295,7 +295,7 @@ class FSwitch(EventMixin):
     msg.match = of.ofp_match(dl_type=0x8000, nw_src=nw_src, nw_dst=nw_dst)
     msg.actions.append(of.ofp_action_vlan_vid(vlan_vid=value))
     msg.actions.append(of.ofp_action_output(port=output_port))
-    self.log.info("Tagging packets with VLAN='0%x", value)
+    self.log.info("Tagging packets with VLAN='0x%x'", value)
     self.connection.send(msg)
 
   def untag_packet(self, nw_src, nw_dst, output_port, value):
@@ -306,7 +306,7 @@ class FSwitch(EventMixin):
     msg.match = of.ofp_match(dl_type=0x8000, nw_dst=nw_dst)
     msg.actions.append(of.ofp_action_strip_vlan())
     msg.actions.append(of.ofp_action_output(port=output_port))
-    self.log.info("Untagging packets with VLAN='0%x", value)
+    self.log.info("Untagging packets with VLAN='0x%x'", value)
     self.connection.send(msg)
 
   def _handle_BarrierIn(self, event):
