@@ -763,7 +763,6 @@ class Main(EventMixin):
     all = set([internal, f1, f2, f3, internet, monitor])
     if connected == all:
       self._all_connected = True
-      self.update_version()
       self.timer = Timer(self.update_wait, self.update_version,
                          recurring=not self.update_once)
 
