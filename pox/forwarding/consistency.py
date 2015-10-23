@@ -486,6 +486,18 @@ class Main(EventMixin):
 
     Timer(self.in_flight_wait, wrapper, args=args, kw=kwargs, recurring=False)
 
+  def start_update_wait_timer(self, msg=None):
+    if msg:
+      self.log.info(msg)
+    self.log.info("Starting update version timer")
+    self.timer = Timer(self.update_wait, self.update_version, recurring=False)
+
+  def update_completed(self, version):
+    if self.update_once:
+      self.log.info("Update to %s is completed, no further updates are triggered", version)
+    else:
+      self.start_update_wait_timer("Update to %s is completed!" % version)
+
   def v2_incosnsitent_update_barriers(self):
     self.log.info("XXX V2 Inconsistent Update with barriers")
     # Prepare the update requests and the barriers
@@ -505,7 +517,7 @@ class Main(EventMixin):
     waiting_calls[barr1.xid] = [redir_student_to_f3, req_barr2]
     waiting_calls[barr2.xid] = [partial(self.slow_update_sleep, monitor_on_f2),
                                 partial(self.slow_update_sleep, req_barr3)]
-    waiting_calls[barr3.xid] = [lambda: self.log.info("Update to V2 is completed!")]
+    waiting_calls[barr3.xid] = [partial(self.update_completed, "V2")]
 
     # Start the update process
     redir_guest_to_f2()
@@ -518,7 +530,10 @@ class Main(EventMixin):
     # 2- Redirect students to F3
     self.handlers[internal].redirect_traffic(student, internal_ports[f3])
     # 3- Monitor traffic to service1 on F2
-    monitor = lambda: self.handlers[f2].monitor_service(host_ips[service1])
+    def monitor():
+      self.handlers[f2].monitor_service(host_ips[service1])
+      self.update_completed("V2")
+
     self.slow_update_sleep(monitor)
 
   def v2_consistent_update_barriers(self):
@@ -551,7 +566,7 @@ class Main(EventMixin):
     waiting_calls[barr1.xid] = [partial(self.in_flight_sleep, monitor_on_f2),
                                 partial(self.in_flight_sleep, req_barr2)]
     waiting_calls[barr2.xid] = [redir_guest_to_f2, req_barr3]
-    waiting_calls[barr3.xid] = [lambda : self.log.info("V2 update is completed!")]
+    waiting_calls[barr3.xid] = [partial(self.update_completed, "V2")]
 
     # Start the update process
     redir_student_to_f3()
@@ -566,7 +581,10 @@ class Main(EventMixin):
 
     # 2- Wait until in-flight packets have been processed by F2.
     monitor = lambda: self.handlers[f2].monitor_service(host_ips[service1])
-    redirect = lambda: self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
+
+    def redirect():
+      self.handlers[internal].redirect_traffic(guest, internal_ports[f2])
+      self.update_completed("V2")
 
     def monitor_then_redirect():
       monitor()
@@ -624,7 +642,7 @@ class Main(EventMixin):
     waiting_calls[barr1.xid] = [tag_unknown_on_i, req_barr3]
     waiting_calls[barr2.xid] = [tag_guest_on_i, req_barr4]
     waiting_calls[barr3.xid] = [remove_monitor_f1]
-    waiting_calls[barr4.xid] = [remove_monitor_f2]
+    waiting_calls[barr4.xid] = [remove_monitor_f2, partial(self.update_completed, "V3")]
 
     untag_unkown_on_f1()
     untag_guest_on_f2()
@@ -655,6 +673,7 @@ class Main(EventMixin):
 
       # Untagging at F2
       self.handlers[f2].untag_packet(nw_src=host_ips[guest], nw_dst=host_ips[service1], output_port=fs_ports[monitor], vid=vlan)
+      self.update_completed("V3")
 
     self.timer = Timer(self.consistent_sleep, after_time, recurring=False)
 
@@ -679,7 +698,7 @@ class Main(EventMixin):
     req_barr2 =lambda: self.handlers[internal].connection.send(barr2)
 
     waiting_calls[barr1.xid] = [set_tos_guest_on_i, req_barr2]
-    waiting_calls[barr2.xid] = [lambda: self.log.info("Update to V3 is completed")]
+    waiting_calls[barr2.xid] = [partial(self.update_completed, "V3")]
 
     redirect_guest_on_f2()
     self.slow_update_sleep(req_barr1)
@@ -763,8 +782,7 @@ class Main(EventMixin):
     all = set([internal, f1, f2, f3, internet, monitor])
     if connected == all:
       self._all_connected = True
-      self.timer = Timer(self.update_wait, self.update_version,
-                         recurring=not self.update_once)
+      self.start_update_wait_timer()
 
 
 
