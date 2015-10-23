@@ -197,6 +197,18 @@ class InternalSwitch(EventMixin):
     self.log.info("Tagging packets with VLAN='0x%x', src='%s', and dst='%s", vid, str(src), str(dst))
     self.connection.send(msg)
 
+  def tag_tos_packet(self, src, dst, outport, tos, priority=1100):
+    """
+    Tag a packet from a Eth src to Eth dst with vlan value
+    """
+    msg = of.ofp_flow_mod()
+    msg.match = of.ofp_match(dl_type=0x0800, dl_src=src, dl_dst=dst)
+    msg.actions.append(of.ofp_action_nw_tos(nw_tos=tos))
+    msg.actions.append(of.ofp_action_output(port=outport))
+    msg.priority = priority
+    self.log.info("Tagging packets with ToS='0x%x', src='%s', and dst='%s", tos, str(src), str(dst))
+    self.connection.send(msg)
+
   def install_v1(self):
     self.log.info("Installing v1")
     self.install_internal()
@@ -562,8 +574,8 @@ class Main(EventMixin):
 
     self.in_flight_sleep(monitor_then_redirect)
 
-  def v3_consistent_update_barriers(self):
-    self.log.info("XXX V3 Consistent Update with barriers")
+  def v3_consistent_update_barriers_vlan(self):
+    self.log.info("XXX V3 Consistent Update with barriers VLANs")
     vlan = 0x111
     # Untagging at F1
     untag_unkown_on_f1 = \
@@ -646,6 +658,32 @@ class Main(EventMixin):
 
     self.timer = Timer(self.consistent_sleep, after_time, recurring=False)
 
+  def v3_consistent_update_barriers_tos(self):
+    self.log.info("XXX V3 Consistent Update with barriers ToS")
+    tos = 32
+    # Send guest traffic to Internet
+    redirect_guest_on_f2 = \
+      lambda: self.handlers[f2].redirect_serivce(host_ips[service1],
+                                                 fs_ports[internet], priority=1100)
+
+    barr1 = get_barrier_msg()
+    req_barr1 =lambda: self.handlers[f2].connection.send(barr1)
+
+
+    # Tagging Guest -> Service1 on internal switch
+    set_tos_guest_on_i = \
+      lambda: self.handlers[internal].tag_tos_packet(src=guest, dst=service1,
+                                                     outport=internal_ports[f2],
+                                                     tos=tos)
+    barr2 = get_barrier_msg()
+    req_barr2 =lambda: self.handlers[internal].connection.send(barr2)
+
+    waiting_calls[barr1.xid] = [set_tos_guest_on_i, req_barr2]
+    waiting_calls[barr2.xid] = [lambda: self.log.info("Update to V3 is completed")]
+
+    redirect_guest_on_f2()
+    self.slow_update_sleep(req_barr1)
+
   def install_v2(self):
     self.log.info("Installing V2")
     if self.consistent:
@@ -670,7 +708,7 @@ class Main(EventMixin):
     self.handlers[internal].tag_packet(unknown, service1, 100)
     """
     #self.v3_inconsistent_update()
-    self.v3_consistent_update_barriers()
+    self.v3_consistent_update_barriers_tos()
 
   def install_v4(self):
     pass
@@ -725,6 +763,7 @@ class Main(EventMixin):
     all = set([internal, f1, f2, f3, internet, monitor])
     if connected == all:
       self._all_connected = True
+      self.update_version()
       self.timer = Timer(self.update_wait, self.update_version,
                          recurring=not self.update_once)
 
