@@ -396,6 +396,13 @@ class Discovery (EventMixin):
         return True
     return False
 
+  def is_edge_port (self, dpid, port):
+    """
+    Return True if given port does not connect to another switch
+    """
+    return not self.isSwitchOnlyPort(dpid, port)
+
+
 def launch (explicit_drop = False, install_flow = True):
   explicit_drop = str(explicit_drop).lower() == "true"
   install_flow = str(install_flow).lower() == "true"
