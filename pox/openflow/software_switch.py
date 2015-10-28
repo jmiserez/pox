@@ -683,7 +683,8 @@ class OFConnection (object):
       return (None, 0)
 
     if ord(message[0]) != OFP_VERSION:
-      raise ValueError("Bad OpenFlow version (" + str(ord(message[0])) + ")")
+      if ord(message[1]) != OFPT_HELLO:
+        raise ValueError("Bad OpenFlow version (" + str(ord(message[0])) + ")")
 
     # OpenFlow parsing occurs here:
     ofp_type = ord(message[1])
