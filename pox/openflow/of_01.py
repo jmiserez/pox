@@ -716,6 +716,8 @@ class Connection (EventMixin):
   # Globally unique identifier for the Connection instance
   ID = 0
 
+  _hb_current_msgin = None
+
   _aborted_connections = 0
 
   def msg (self, m):
@@ -832,6 +834,19 @@ class Connection (EventMixin):
     except:
       pass
 
+  def base64_encode_raw(self, msg):
+    import base64
+    return base64.b64encode(msg).replace("\n", "")
+
+  def print_msgin(self, dpid, msg):
+    #print "pox.openflow.of_01.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg)
+    log.info("pox.openflow.of_01.HappensBefore-MessageIn-[{0}:{1}]".format(dpid, msg))
+  def print_msgout(self, dpid1, msg1, dpid2, msg2):
+    #print "pox.openflow.of_01.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2)
+    log.info("pox.openflow.of_01.HappensBefore-MessageOut-[{0}:{1}:{2}:{3}]".format(dpid1, msg1, dpid2, msg2))
+  def ofp_type_to_string(self,t):
+    return of.ofp_type_rev_map.keys()[of.ofp_type_rev_map.values().index(t)]
+
   def send (self, data):
     """
     Send data to the switch.
@@ -840,12 +855,30 @@ class Connection (EventMixin):
     an OpenFlow controller-to-switch message object from libopenflow.
     """
     if self.disconnected: return
+    header_type = None
     if type(data) is not bytes:
       # There's actually no reason the data has to be an instance of
       # ofp_header, but this check is likely to catch a lot of bugs,
       # so we check it anyway.
       assert isinstance(data, of.ofp_header)
+      header_type = data.header_type
       data = data.pack()
+    else:
+      if hasattr(data, 'unpack'):
+        data = data.unpack()
+        if isinstance(data, of.ofp_header):
+          header_type = data.header_type
+        if hasattr(data, 'pack'):
+          data = data.pack()
+
+    if header_type in (of.ofp_type_rev_map['OFPT_PACKET_OUT'],
+                       of.ofp_type_rev_map['OFPT_FLOW_MOD'],
+                       of.ofp_type_rev_map['OFPT_PORT_MOD'],
+                       of.ofp_type_rev_map['OFPT_BARRIER_REQUEST']):
+      curr_msgin = Connection._hb_current_msgin
+      if curr_msgin is not None:
+        assert len(curr_msgin) == 2
+        self.print_msgout(curr_msgin[0], curr_msgin[1], self.dpid, self.base64_encode_raw(data))
 
     if deferredSender.sending:
       log.debug("deferred sender is sending!")
@@ -908,6 +941,16 @@ class Connection (EventMixin):
       assert new_offset - offset == msg_length
       offset = new_offset
 
+      if ofp_type in (of.ofp_type_rev_map['OFPT_PACKET_IN'],
+                      of.ofp_type_rev_map['OFPT_FLOW_REMOVED'],
+                      of.ofp_type_rev_map['OFPT_BARRIER_REPLY']):
+        encoded_msgin = self.base64_encode_raw(self.buf[0:msg_length])
+        self.print_msgin(self.dpid, encoded_msgin)
+        Connection._hb_current_msgin = (self.dpid, encoded_msgin)
+      else:
+        Connection._hb_current_msgin = None
+
+
       try:
         h = self.handlers[ofp_type]
         h(self, msg)
@@ -915,7 +958,10 @@ class Connection (EventMixin):
         log.exception("%s: Exception while handling OpenFlow message:\n" +
                       "%s %s", self,self,
                       ("\n" + str(self) + " ").join(str(msg).split('\n')))
+        Connection._hb_current_msgin = None
         continue
+      finally:
+        Connection._hb_current_msgin = None
 
     if offset != 0:
       self.buf = self.buf[offset:]
