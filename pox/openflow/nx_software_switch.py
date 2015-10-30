@@ -104,6 +104,10 @@ class NXSoftwareSwitch(SoftwareSwitch):
     self.role_by_conn[connection.ID] = nx.ROLE_OTHER
     connection.set_message_handler(self.on_message_received)
     self.connections.append(connection)
+    while not connection: # TODO(jm): necessary? OK?
+      pass
+    msg = of.ofp_hello()
+    connection.send(msg)
     return connection
 
   def set_role(self, connection, role):
