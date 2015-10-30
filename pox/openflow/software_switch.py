@@ -152,6 +152,9 @@ class SoftwareSwitch(EventMixin):
     '''
     connection.set_message_handler(self.on_message_received)
     self._connection = connection
+    while not self._connection: # TODO(jm): necessary? OK?
+      pass
+    self.send_hello()
 
   def send(self, message):
     """ Send a message to this switches communication partner. If the switch is not connected, the message is silently dropped. """
@@ -178,7 +181,7 @@ class SoftwareSwitch(EventMixin):
     # NOTE(jm): -> There is no need to prevent infinite loops as the idea is to send a
     #              a Hello message once at startup, not to reply to received messages.
     # TODO(jm): Send message only once at startup
-    self.send_hello()
+    # self.send_hello()
 
   def _receive_echo(self, ofp):
     """Reply to echo request
@@ -276,6 +279,9 @@ class SoftwareSwitch(EventMixin):
 
     def queue_stats(ofp):
       raise AttributeError("not implemented")
+    
+    def vendor_stats(ofp):
+      raise AttributeError("not implemented")
 
     stats_handlers = {
         OFPST_DESC: desc_stats,
@@ -283,7 +289,8 @@ class SoftwareSwitch(EventMixin):
         OFPST_AGGREGATE: aggregate_stats,
         OFPST_TABLE: table_stats,
         OFPST_PORT: port_stats,
-        OFPST_QUEUE: queue_stats
+        OFPST_QUEUE: queue_stats,
+        OFPST_VENDOR: vendor_stats
     }
 
     if ofp.type in stats_handlers:
@@ -293,7 +300,7 @@ class SoftwareSwitch(EventMixin):
 
     body=handler(ofp)
     self.log.debug("Type: %s" % str(ofp.type))
-    reply = ofp_stats_reply(xid=ofp.xid, body=body)
+    reply = ofp_stats_reply(xid=ofp.xid, type=ofp.type, body=body)
     self.log.debug("Sending stats reply %s %s", self.name, str(reply))
     self.send(reply)
 
