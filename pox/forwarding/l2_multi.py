@@ -53,6 +53,13 @@ path_map = defaultdict(lambda:defaultdict(lambda:(None,None)))
 # Waiting path.  (dpid,xid)->WaitingPath
 waiting_paths = {}
 
+# Waiting delete path.  (dpid,xid)->WaitingPath
+waiting_delete_paths = {}
+
+# Path currently installed in the switch
+# match -> InstalledPath
+installed_paths = {}
+
 # Time to not flood in seconds
 FLOOD_HOLDDOWN = 5
 
@@ -165,7 +172,7 @@ class WaitingPath (object):
   """
   A path which is waiting for its path to be established
   """
-  def __init__ (self, path, packet):
+  def __init__ (self, path, packet, match):
     """
     xids is a sequence of (dpid,xid)
     first_switch is the DPID where the packet came from
@@ -176,6 +183,7 @@ class WaitingPath (object):
     self.first_switch = path[0][0].dpid
     self.xids = set()
     self.packet = packet
+    self.match = match
 
     if len(waiting_paths) > 1000:
       WaitingPath.expire_waiting_paths()
@@ -202,7 +210,7 @@ class WaitingPath (object):
             action=of.ofp_action_output(port=of.OFPP_TABLE))
         core.openflow.sendToDPID(self.first_switch, msg)
 
-      core.l2_multi.raiseEvent(PathInstalled(self.path))
+      core.l2_multi.raiseEvent(PathInstalled(self.path, self.match))
 
 
   @staticmethod
@@ -218,12 +226,69 @@ class WaitingPath (object):
       log.error("%i paths failed to install" % (killed,))
 
 
+class WaitingDeletePath (object):
+  """
+  A path which is waiting for being deleted!
+  """
+  def __init__ (self, path, match):
+    """
+    xids is a sequence of (dpid,xid)
+    packet is something that can be sent in a packet_out
+    """
+    self.expires_at = time.time() + PATH_SETUP_TIME
+    self.path = path
+    self.first_switch = path[0][0].dpid
+    self.xids = set()
+    self.match = match
+
+    if len(waiting_paths) > 1000:
+      WaitingDeletePath.expire_waiting_delete_paths()
+
+  def add_xid (self, dpid, xid):
+    self.xids.add((dpid,xid))
+    waiting_delete_paths[(dpid,xid)] = self
+
+  @property
+  def is_expired (self):
+    return time.time() >= self.expires_at
+
+  def notify (self, event):
+    """
+    Called when a barrier has been received
+    """
+    self.xids.discard((event.dpid,event.xid))
+    if len(self.xids) == 0:
+      core.l2_multi.raiseEvent(PathDeleted(self.path, self.match))
+
+  @staticmethod
+  def expire_waiting_delete_paths ():
+    packets = set(waiting_delete_paths.values())
+    killed = 0
+    for p in packets:
+      if p.is_expired:
+        killed += 1
+        for entry in p.xids:
+          waiting_delete_paths.pop(entry, None)
+    if killed:
+      log.error("%i paths failed to delete" % (killed,))
+
+
 class PathInstalled (Event):
   """
   Fired when a path is installed
   """
-  def __init__ (self, path):
+  def __init__ (self, path, match):
     self.path = path
+    self.match = match
+
+
+class PathDeleted (Event):
+  """
+  Fired when a path is deleted
+  """
+  def __init__ (self, path, match):
+    self.path = path
+    self.match = match
 
 
 class Switch (EventMixin):
@@ -248,7 +313,7 @@ class Switch (EventMixin):
     switch.connection.send(msg)
 
   def _install_path (self, p, match, packet_in=None):
-    wp = WaitingPath(p, packet_in)
+    wp = WaitingPath(p, packet_in, match)
     for sw,in_port,out_port in p:
       self._install(sw, in_port, out_port, match)
       msg = of.ofp_barrier_request()
@@ -417,11 +482,18 @@ class l2_multi (EventMixin):
 
   _eventMixin_events = set([
     PathInstalled,
+    PathDeleted,
   ])
 
   def __init__ (self):
     # Listen to dependencies (specifying priority 0 for openflow)
     core.listen_to_dependencies(self, listen_args={'openflow':{'priority':0}})
+    self.listenTo(self)
+
+  def _handle_PathInstalled(self, event):
+    log.info("New path installed")
+    global installed_paths
+    installed_paths[event.match] = event.path
 
   def _handle_openflow_discovery_LinkEvent (self, event):
     def flip (link):
@@ -437,10 +509,17 @@ class l2_multi (EventMixin):
     # For link removals, this makes sure that we don't use a
     # path that may have been broken.
     #NOTE: This could be radically improved! (e.g., not *ALL* paths break)
-    clear = of.ofp_flow_mod(command=of.OFPFC_DELETE)
-    for sw in switches.itervalues():
-      if sw.connection is None: continue
-      sw.connection.send(clear)
+    log.info("Clearing old paths")
+    for match in installed_paths.keys()[:]:
+      clear = of.ofp_flow_mod(match=match, command=of.OFPFC_DELETE)
+      path = installed_paths[match]
+      wp = WaitingDeletePath(path, match)
+      for sw,in_port,out_port in path:
+        sw.connection.send(clear)
+        msg = of.ofp_barrier_request()
+        sw.connection.send(msg)
+        wp.add_xid(sw.dpid,msg.xid)
+    installed_paths.clear()
     path_map.clear()
 
     if event.removed:
