@@ -184,6 +184,7 @@ class WaitingPath (object):
     self.xids = set()
     self.packet = packet
     self.match = match
+    self.current_segment = None
 
     if len(waiting_paths) > 1000:
       WaitingPath.expire_waiting_paths()
@@ -196,12 +197,30 @@ class WaitingPath (object):
   def is_expired (self):
     return time.time() >= self.expires_at
 
+  def install(self):
+    assert self.current_segment is None, "The path is currently being installed"
+    self.current_segment = len(self.path)
+    self._install_next_segement()
+
+  def _install_next_segement(self):
+    self.current_segment -= 1
+    assert self.current_segment >= 0
+    if self.current_segment == 0:
+      log.info("Installing LAST Segement")
+    sw,in_port,out_port = self.path[self.current_segment]
+    sw._install(sw, in_port, out_port, self.match)
+    msg = of.ofp_barrier_request()
+    sw.connection.send(msg)
+    self.add_xid(sw.dpid,msg.xid)
+
   def notify (self, event):
     """
     Called when a barrier has been received
     """
     self.xids.discard((event.dpid,event.xid))
-    if len(self.xids) == 0:
+    if self.current_segment > 0:
+      self._install_next_segement()
+    else:
       # Done!
       if self.packet:
         log.debug("Sending delayed packet out %s"
@@ -314,11 +333,7 @@ class Switch (EventMixin):
 
   def _install_path (self, p, match, packet_in=None):
     wp = WaitingPath(p, packet_in, match)
-    for sw,in_port,out_port in p:
-      self._install(sw, in_port, out_port, match)
-      msg = of.ofp_barrier_request()
-      sw.connection.send(msg)
-      wp.add_xid(sw.dpid,msg.xid)
+    wp.install()
 
   def install_path (self, dst_sw, last_port, match, event):
     """
