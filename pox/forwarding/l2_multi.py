@@ -53,6 +53,10 @@ path_map = defaultdict(lambda:defaultdict(lambda:(None,None)))
 # Waiting path.  (dpid,xid)->WaitingPath
 waiting_paths = {}
 
+# Paths being installed by DPID.
+# dpid -> WaitingPath
+waiting_dpid_paths = defaultdict(list)
+
 # Waiting delete path.  (dpid,xid)->WaitingPath
 waiting_delete_paths = {}
 
@@ -64,8 +68,8 @@ installed_paths = {}
 FLOOD_HOLDDOWN = 5
 
 # Flow timeouts
-FLOW_IDLE_TIMEOUT = 10
-FLOW_HARD_TIMEOUT = 30
+FLOW_IDLE_TIMEOUT = 1000
+FLOW_HARD_TIMEOUT = 3000
 
 # How long is allowable to set up a path?
 PATH_SETUP_TIME = 4
@@ -185,6 +189,7 @@ class WaitingPath (object):
     self.packet = packet
     self.match = match
     self.current_segment = None
+    self.additional_packets = []
 
     if len(waiting_paths) > 1000:
       WaitingPath.expire_waiting_paths()
@@ -199,6 +204,7 @@ class WaitingPath (object):
 
   def install(self):
     assert self.current_segment is None, "The path is currently being installed"
+    waiting_dpid_paths[self.first_switch].append(self)
     self.current_segment = len(self.path)
     self._install_next_segement()
 
@@ -228,7 +234,14 @@ class WaitingPath (object):
         msg = of.ofp_packet_out(data=self.packet,
             action=of.ofp_action_output(port=of.OFPP_TABLE))
         core.openflow.sendToDPID(self.first_switch, msg)
-
+      for packet in self.additional_packets:
+        log.debug("Sending Additional delayed packet out %s"
+                  % (dpid_to_str(self.first_switch),))
+        msg = of.ofp_packet_out(data=packet,
+            action=of.ofp_action_output(port=of.OFPP_TABLE))
+        core.openflow.sendToDPID(self.first_switch, msg)
+      self.additional_packets = []
+      waiting_dpid_paths[self.first_switch].remove(self)
       core.l2_multi.raiseEvent(PathInstalled(self.path, self.match))
 
 
@@ -461,6 +474,11 @@ class Switch (EventMixin):
       else:
         dest = mac_map[packet.dst]
         match = of.ofp_match.from_packet(packet)
+        for path in waiting_dpid_paths[event.dpid]:
+          if path.match.matches_with_wildcards(match):
+            log.info("Path is already being install for packet %s", packet)
+            path.additional_packets.append(packet)
+            return
         self.install_path(dest[0], dest[1], match, event)
 
   def disconnect (self):
