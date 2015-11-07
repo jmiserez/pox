@@ -64,6 +64,12 @@ waiting_delete_paths = {}
 # match -> InstalledPath
 installed_paths = {}
 
+# packet that being flooded in the network
+flooded_packets = []
+
+# Waiting learning
+waiting_learning = defaultdict(list)
+
 # Time to not flood in seconds
 FLOOD_HOLDDOWN = 5
 
@@ -448,6 +454,11 @@ class Switch (EventMixin):
         if packet.src.is_multicast == False:
           mac_map[packet.src] = loc # Learn position for ethaddr
           log.debug("Learned %s at %s.%i", packet.src, loc[0], loc[1])
+          if packet.src in flooded_packets:
+            flooded_packets.remove((packet.src, event.dpid))
+          for sw, e in waiting_learning[packet.src]:
+            log.debug("Re-Issuing Packint in")
+            sw._handle_PacketIn(e)
       elif packet.dst.is_multicast == False:
         # New place is a switch-to-switch port!
         # Hopefully, this is a packet we're flooding because we didn't
@@ -468,14 +479,20 @@ class Switch (EventMixin):
       log.debug("Flood multicast from %s", packet.src)
       flood()
     else:
-      if packet.dst not in mac_map:
+      if packet.dst not in mac_map and (packet.dst, event.dpid) not in flooded_packets:
         log.debug("%s unknown -- flooding" % (packet.dst,))
+        flooded_packets.append((packet.dst, event.dpid))
         flood()
+      if packet.dst not in mac_map and (packet.dst, event.dpid) in flooded_packets:
+        log.debug("A packet is already flooded to find %s" % (packet.dst,))
+        waiting_learning[packet.dst].append((self, event))
       else:
         dest = mac_map[packet.dst]
         match = of.ofp_match.from_packet(packet)
+        flipped_match = match.flip()
         for path in waiting_dpid_paths[event.dpid]:
-          if path.match.matches_with_wildcards(match):
+          if path.match.matches_with_wildcards(match) or\
+                  path.match.matches_with_wildcards(flipped_match):
             log.info("Path is already being install for packet %s", packet)
             path.additional_packets.append(packet)
             return
