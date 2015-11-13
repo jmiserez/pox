@@ -284,7 +284,7 @@ class FlowTable (EventMixin):
   
   def modify_matching_entries(self, actions, match, priority=0, strict=False):
     modify_flows = self.matching_entries(match, priority, strict)
-    self.modify_entries(modify_flows, actions)
+    self.modify_entries(actions, modify_flows)
     return modify_flows
 
   def entry_for_packet(self, packet, in_port):
